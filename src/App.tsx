@@ -1,31 +1,71 @@
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useState } from 'react'
+import { ComingSoonNotice } from './components/ComingSoonNotice'
+import { GoalMenu } from './components/GoalMenu'
 import { TrainingModule } from './components/TrainingModule'
 import { WatercolorBackground } from './components/WatercolorBackground'
+import type { GoalId } from './data/learningGoals'
+
+type Screen = 'menu' | 'training' | 'coming-soon'
 
 function App() {
+  const [screen, setScreen] = useState<Screen>('menu')
+
+  const handleGoalSelect = (goalId: GoalId) => {
+    if (goalId === 'self') {
+      setScreen('training')
+    } else {
+      setScreen('coming-soon')
+    }
+  }
+
+  const goToMenu = () => setScreen('menu')
+
   return (
-    <div className="relative flex h-screen items-center justify-center overflow-hidden px-4 py-6">
+    <div className="relative min-h-screen overflow-x-hidden">
       <WatercolorBackground />
 
-      <div className="relative z-10 flex h-full max-h-[720px] w-full max-w-xl flex-col items-center justify-center gap-4 py-2">
-        <motion.h1
-          initial={{ opacity: 0, y: -16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: 'easeOut' }}
-          className="text-center text-2xl font-bold leading-tight text-[#5c4033] sm:text-3xl"
-        >
-          Тренажер светских бесед{' '}
-          <span className="text-[#e8879a]">&lt;3</span>
-        </motion.h1>
+      <div className="relative z-10 flex min-h-screen w-full justify-center">
+        <AnimatePresence mode="wait">
+          {screen === 'menu' && (
+            <motion.div
+              key="menu"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="w-full"
+            >
+              <GoalMenu onSelect={handleGoalSelect} />
+            </motion.div>
+          )}
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.15 }}
-          className="w-full"
-        >
-          <TrainingModule />
-        </motion.div>
+          {screen === 'training' && (
+            <motion.div
+              key="training"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex w-full justify-center"
+            >
+              <TrainingModule onBackToMenu={goToMenu} />
+            </motion.div>
+          )}
+
+          {screen === 'coming-soon' && (
+            <motion.div
+              key="coming-soon"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="w-full"
+            >
+              <ComingSoonNotice onBack={goToMenu} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )
