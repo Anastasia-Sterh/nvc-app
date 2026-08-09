@@ -20,13 +20,13 @@ export const learningGoals: LearningGoal[] = [
     title: 'Договариваться и достигать целей',
     description:
       'Ищем решения win-win и ведем конструктивный диалог',
-    available: false,
+    available: true,
   },
   {
     id: 'boundaries',
     title: 'Уверенно отстаивать границы',
     description:
       'Твердо говорим «нет» и просим о важном без чувства вины',
-    available: false,
+    available: true,
   },
 ]
