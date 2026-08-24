@@ -7,16 +7,18 @@ import { ComingSoonNotice } from './components/ComingSoonNotice'
 import { DebriefScreen } from './components/DebriefScreen'
 import { GoalMenu } from './components/GoalMenu'
 import { MentorAvatar } from './components/MentorAvatar'
+import { TrainerBriefingScreen } from './components/TrainerBriefingScreen'
 import { TrainingModule } from './components/TrainingModule'
 import { WatercolorBackground } from './components/WatercolorBackground'
 import { WelcomeModal } from './components/WelcomeModal'
 import type { GoalId } from './data/learningGoals'
 import { getTrainerSession } from './data/trainerSessions'
 import { getTrainingModule } from './data/trainingModules'
+import { useModuleProgress } from './hooks/useModuleProgress'
 import { useWelcomeSeen } from './hooks/useWelcomeSeen'
-import type { TrainerId, TrainerSessionConfig } from './types/trainer'
+import type { SimulationResult, TrainerId, TrainerSessionConfig } from './types/trainer'
 
-type Screen = 'menu' | 'training' | 'chat' | 'debrief' | 'coming-soon'
+type Screen = 'menu' | 'training' | 'briefing' | 'chat' | 'debrief' | 'coming-soon'
 
 const avatarByModule: Record<string, ComponentType> = {
   self: MentorAvatar,
@@ -33,11 +35,13 @@ const avatarsByTrainer: Record<TrainerId, ComponentType[]> = {
 
 function App() {
   const { hasSeenWelcome, markWelcomeSeen } = useWelcomeSeen()
+  const { markComplete, allComplete } = useModuleProgress()
   const [showWelcome, setShowWelcome] = useState(!hasSeenWelcome)
   const [screen, setScreen] = useState<Screen>('menu')
   const [activeGoalId, setActiveGoalId] = useState<GoalId | null>(null)
   const [activeTrainerId, setActiveTrainerId] = useState<TrainerId | null>(null)
   const [trainerSession, setTrainerSession] = useState<TrainerSessionConfig | null>(null)
+  const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null)
 
   const closeWelcome = () => {
     markWelcomeSeen()
@@ -49,6 +53,11 @@ function App() {
     if (!session) return
     setActiveTrainerId(trainerId)
     setTrainerSession(session)
+    setSimulationResult(null)
+    setScreen(session.briefing ? 'briefing' : 'chat')
+  }
+
+  const handleStartChat = () => {
     setScreen('chat')
   }
 
@@ -67,6 +76,7 @@ function App() {
     setActiveGoalId(null)
     setActiveTrainerId(null)
     setTrainerSession(null)
+    setSimulationResult(null)
   }
 
   const handleStartModuleTrainer = () => {
@@ -75,7 +85,8 @@ function App() {
     }
   }
 
-  const handleFinishTraining = () => {
+  const handleFinishTraining = (result: SimulationResult) => {
+    setSimulationResult(result)
     setScreen('debrief')
   }
 
@@ -107,6 +118,7 @@ function App() {
               <GoalMenu
                 onSelect={handleGoalSelect}
                 onStartPractice={() => startTrainer('comprehensive')}
+                allModulesComplete={allComplete}
               />
             </motion.div>
           )}
@@ -123,8 +135,30 @@ function App() {
               <TrainingModule
                 config={activeModule}
                 Avatar={Avatar}
+                goalId={activeGoalId!}
                 onBackToMenu={goToMenu}
                 onStartTrainer={handleStartModuleTrainer}
+                onStartComprehensive={() => startTrainer('comprehensive')}
+                onModuleComplete={markComplete}
+                allModulesComplete={allComplete}
+              />
+            </motion.div>
+          )}
+
+          {screen === 'briefing' && trainerSession?.briefing && (
+            <motion.div
+              key={`briefing-${activeTrainerId}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="w-full"
+            >
+              <TrainerBriefingScreen
+                session={trainerSession}
+                Avatars={chatAvatars}
+                onStart={handleStartChat}
+                onBackToMenu={goToMenu}
               />
             </motion.div>
           )}
@@ -158,6 +192,7 @@ function App() {
             >
               <DebriefScreen
                 session={trainerSession}
+                result={simulationResult}
                 onBackToMenu={goToMenu}
                 onRetry={handleRetryTraining}
               />

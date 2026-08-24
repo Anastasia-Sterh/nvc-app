@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useState, type ComponentType } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
+import type { GoalId } from '../data/learningGoals'
 import type { TrainingModuleConfig, TrainingTheme } from '../types/training'
 
 const smoothEase = [0.22, 1, 0.36, 1] as const
@@ -130,11 +131,15 @@ function ProgressBar({
 
 function FinaleActions({
   onStartTrainer,
+  onStartComprehensive,
+  showComprehensive,
   onRestart,
   onBackToMenu,
   theme,
 }: {
   onStartTrainer?: () => void
+  onStartComprehensive?: () => void
+  showComprehensive?: boolean
   onRestart: () => void
   onBackToMenu: () => void
   theme: TrainingTheme
@@ -152,6 +157,15 @@ function FinaleActions({
           }}
         >
           Перейти к тренажеру модуля
+        </button>
+      )}
+      {showComprehensive && onStartComprehensive && (
+        <button
+          type="button"
+          onClick={onStartComprehensive}
+          className="w-full max-w-xs cursor-pointer rounded-full border border-[#d4b896]/50 bg-gradient-to-br from-[#f3e8dc] to-[#e0d2c4] px-6 py-2.5 text-sm font-semibold text-[#5c4033] shadow-sm transition hover:brightness-[1.02] active:scale-[0.98] sm:max-w-sm"
+        >
+          Комплексный тренажер: Треугольник интересов
         </button>
       )}
       <div className="flex w-full flex-col items-center gap-3 sm:flex-row sm:justify-center">
@@ -177,11 +191,24 @@ function FinaleActions({
 interface TrainingModuleProps {
   config: TrainingModuleConfig
   Avatar: ComponentType
+  goalId: GoalId
   onBackToMenu: () => void
   onStartTrainer?: () => void
+  onStartComprehensive?: () => void
+  onModuleComplete?: (goalId: GoalId) => void
+  allModulesComplete?: boolean
 }
 
-export function TrainingModule({ config, Avatar, onBackToMenu, onStartTrainer }: TrainingModuleProps) {
+export function TrainingModule({
+  config,
+  Avatar,
+  goalId,
+  onBackToMenu,
+  onStartTrainer,
+  onStartComprehensive,
+  onModuleComplete,
+  allModulesComplete,
+}: TrainingModuleProps) {
   const { steps, theme, complete } = config
 
   const [stepIndex, setStepIndex] = useState(0)
@@ -247,6 +274,12 @@ export function TrainingModule({ config, Avatar, onBackToMenu, onStartTrainer }:
   const showBubble = !showQuiz
   const bubbleKey = `${stepIndex}-${messageIndex}`
   const showEndScreen = isComplete || isFinaleStep
+
+  useEffect(() => {
+    if (showEndScreen && onModuleComplete) {
+      onModuleComplete(goalId)
+    }
+  }, [showEndScreen, goalId, onModuleComplete])
 
   const primaryLabel = showChoices
     ? canProceedFromChoice
@@ -321,6 +354,8 @@ export function TrainingModule({ config, Avatar, onBackToMenu, onStartTrainer }:
               </p>
               <FinaleActions
                 onStartTrainer={onStartTrainer}
+                onStartComprehensive={onStartComprehensive}
+                showComprehensive={allModulesComplete}
                 onRestart={restart}
                 onBackToMenu={onBackToMenu}
                 theme={theme}
@@ -354,6 +389,8 @@ export function TrainingModule({ config, Avatar, onBackToMenu, onStartTrainer }:
               </div>
               <FinaleActions
                 onStartTrainer={onStartTrainer}
+                onStartComprehensive={onStartComprehensive}
+                showComprehensive={allModulesComplete}
                 onRestart={restart}
                 onBackToMenu={onBackToMenu}
                 theme={theme}
