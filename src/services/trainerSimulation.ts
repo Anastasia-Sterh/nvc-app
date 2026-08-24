@@ -74,19 +74,19 @@ export const MILESTONE_STEPS = [
   {
     key: 'empathy' as const,
     label: 'Этап 1: Эмпатия',
-    description: 'Снять панику Сергею через ННО',
+    description: 'Примите чувства',
     mentor: 'Мурчик',
   },
   {
     key: 'boundaries' as const,
     label: 'Этап 2: Границы',
-    description: 'Аргументированно отклонить ночные переработки по DEAR MAN',
+    description: 'Позаботьтесь о команде',
     mentor: 'Бьерн',
   },
   {
     key: 'win_win' as const,
     label: 'Этап 3: Win-Win',
-    description: 'Предложить альтернативное решение для презентации по Гарварду',
+    description: 'Предложите альтернативы',
     mentor: 'Арни',
   },
 ]
@@ -245,7 +245,7 @@ export function buildSystemPrompt(
 
   const speakersBlock =
     session.id === 'comprehensive'
-      ? `Собеседник: Сергей (начальник) — пanикует из-за обещания заказчику, давит на команду. В dialogue.speaker всегда указывай «Сергей (начальник)».`
+      ? `Собеседник: Сергей (начальник) — пanikuет из-за обещания заказчику, давит на команду. В dialogue.speaker всегда указывай «Сергей (начальник)».`
       : `Отвечай от имени NPC-собеседника из сценария в поле dialogue.speaker.`
 
   const limitsBlock =

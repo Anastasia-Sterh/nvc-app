@@ -61,10 +61,14 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
             заданиями по темам и финальной практики. Вы освоите техники
             ненасильственного общения, метод DEAR MAN и познакомитесь с
             инструментами Гарвардской школы переговоров. Вы можете сразу
-            перейти к финальному заданию и получить обратную связь.
+            перейти к финальному заданию и получить обратную связь
           </p>
 
-          <ul className="mt-4 flex items-end justify-center gap-5 sm:gap-8">
+          <p className="mt-4 text-center text-xs font-semibold uppercase tracking-wide text-[#c49080]">
+            Ваши наставники
+          </p>
+
+          <ul className="mt-2 flex items-end justify-center gap-5 sm:gap-8">
             {mentors.map(({ Avatar, name }) => (
               <li key={name} className="flex flex-col items-center gap-1">
                 <div className="origin-bottom scale-[0.72] sm:scale-[0.78] [&_span:last-child]:hidden">

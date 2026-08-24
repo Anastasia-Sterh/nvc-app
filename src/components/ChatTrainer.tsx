@@ -111,7 +111,7 @@ function MilestonesPanel({ milestones }: { milestones: NegotiationMilestones }) 
           >
             <span className="mt-0.5 shrink-0 font-mono text-xs">{done ? '☑' : '☐'}</span>
             <span>
-              <span className="font-semibold">{step.label}:</span> {step.description}
+              <span className="font-semibold">{step.label}.</span> {step.description}
             </span>
           </div>
         )
