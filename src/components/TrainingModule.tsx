@@ -129,34 +129,47 @@ function ProgressBar({
 }
 
 function FinaleActions({
+  onStartTrainer,
   onRestart,
   onBackToMenu,
   theme,
 }: {
+  onStartTrainer?: () => void
   onRestart: () => void
   onBackToMenu: () => void
   theme: TrainingTheme
 }) {
   return (
-    <div className="mt-6 flex w-full flex-col items-center gap-3 sm:flex-row sm:justify-center">
-      <button
-        type="button"
-        onClick={onRestart}
-        className="cursor-pointer rounded-full px-6 py-2.5 text-sm font-semibold shadow-sm transition hover:brightness-105 active:scale-[0.98]"
-        style={{
-          background: `linear-gradient(to right, ${theme.buttonFrom}, ${theme.buttonVia}, ${theme.buttonTo})`,
-          color: theme.buttonText,
-        }}
-      >
-        Пройти заново
-      </button>
-      <button
-        type="button"
-        onClick={onBackToMenu}
-        className="cursor-pointer rounded-full border border-white/70 bg-white/60 px-6 py-2.5 text-sm font-semibold text-[#7a5248] shadow-sm transition hover:bg-white/80 active:scale-[0.98]"
-      >
-        Вернуться в меню
-      </button>
+    <div className="mt-6 flex w-full flex-col items-center gap-3">
+      {onStartTrainer && (
+        <button
+          type="button"
+          onClick={onStartTrainer}
+          className="w-full max-w-xs cursor-pointer rounded-full px-6 py-2.5 text-sm font-semibold shadow-md transition hover:brightness-105 active:scale-[0.98] sm:max-w-sm"
+          style={{
+            background: `linear-gradient(to right, ${theme.buttonFrom}, ${theme.buttonVia}, ${theme.buttonTo})`,
+            color: theme.buttonText,
+          }}
+        >
+          Перейти к тренажеру модуля
+        </button>
+      )}
+      <div className="flex w-full flex-col items-center gap-3 sm:flex-row sm:justify-center">
+        <button
+          type="button"
+          onClick={onRestart}
+          className="cursor-pointer rounded-full border border-white/70 bg-white/60 px-6 py-2.5 text-sm font-semibold text-[#7a5248] shadow-sm transition hover:bg-white/80 active:scale-[0.98]"
+        >
+          Пройти обучение заново
+        </button>
+        <button
+          type="button"
+          onClick={onBackToMenu}
+          className="cursor-pointer rounded-full border border-white/70 bg-white/60 px-6 py-2.5 text-sm font-semibold text-[#7a5248] shadow-sm transition hover:bg-white/80 active:scale-[0.98]"
+        >
+          Вернуться в меню
+        </button>
+      </div>
     </div>
   )
 }
@@ -165,9 +178,10 @@ interface TrainingModuleProps {
   config: TrainingModuleConfig
   Avatar: ComponentType
   onBackToMenu: () => void
+  onStartTrainer?: () => void
 }
 
-export function TrainingModule({ config, Avatar, onBackToMenu }: TrainingModuleProps) {
+export function TrainingModule({ config, Avatar, onBackToMenu, onStartTrainer }: TrainingModuleProps) {
   const { steps, theme, complete } = config
 
   const [stepIndex, setStepIndex] = useState(0)
@@ -306,6 +320,7 @@ export function TrainingModule({ config, Avatar, onBackToMenu }: TrainingModuleP
                 {complete.message}
               </p>
               <FinaleActions
+                onStartTrainer={onStartTrainer}
                 onRestart={restart}
                 onBackToMenu={onBackToMenu}
                 theme={theme}
@@ -338,6 +353,7 @@ export function TrainingModule({ config, Avatar, onBackToMenu }: TrainingModuleP
                 </div>
               </div>
               <FinaleActions
+                onStartTrainer={onStartTrainer}
                 onRestart={restart}
                 onBackToMenu={onBackToMenu}
                 theme={theme}
