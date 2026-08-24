@@ -1,6 +1,4 @@
-import type { GoalId } from '../data/learningGoals'
-
-export type TrainerId = GoalId | 'comprehensive'
+export type TrainerId = 'comprehensive'
 
 export interface ChatMessage {
   id: string
@@ -62,10 +60,24 @@ export interface FinalSummary {
   bjorn_final_feedback: string
 }
 
+export interface NegotiationMilestones {
+  empathy_completed: boolean
+  boundaries_completed: boolean
+  win_win_completed: boolean
+}
+
+export const EMPTY_MILESTONES: NegotiationMilestones = {
+  empathy_completed: false,
+  boundaries_completed: false,
+  win_win_completed: false,
+}
+
 export interface AiTurnResponse {
   communication_efficiency: number
   is_auto_completed: boolean
   hint_from_mentor: HintFromMentor
+  milestones?: NegotiationMilestones
+  hint_on_demand?: string
   dialogue: DialogueTurn
   single_message_evaluations: SingleMessageEvaluation[]
   final_summary: FinalSummary | null

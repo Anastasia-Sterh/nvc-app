@@ -27,9 +27,6 @@ const avatarByModule: Record<string, ComponentType> = {
 }
 
 const avatarsByTrainer: Record<TrainerId, ComponentType[]> = {
-  self: [MentorAvatar],
-  negotiate: [ArniAvatar],
-  boundaries: [BjornAvatar],
   comprehensive: [MentorAvatar, ArniAvatar, BjornAvatar],
 }
 
@@ -79,12 +76,6 @@ function App() {
     setSimulationResult(null)
   }
 
-  const handleStartModuleTrainer = () => {
-    if (activeGoalId) {
-      startTrainer(activeGoalId)
-    }
-  }
-
   const handleFinishTraining = (result: SimulationResult) => {
     setSimulationResult(result)
     setScreen('debrief')
@@ -118,7 +109,6 @@ function App() {
               <GoalMenu
                 onSelect={handleGoalSelect}
                 onStartPractice={() => startTrainer('comprehensive')}
-                allModulesComplete={allComplete}
               />
             </motion.div>
           )}
@@ -137,7 +127,6 @@ function App() {
                 Avatar={Avatar}
                 goalId={activeGoalId!}
                 onBackToMenu={goToMenu}
-                onStartTrainer={handleStartModuleTrainer}
                 onStartComprehensive={() => startTrainer('comprehensive')}
                 onModuleComplete={markComplete}
                 allModulesComplete={allComplete}

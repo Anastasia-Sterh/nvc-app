@@ -1,4 +1,21 @@
 import type { AiTurnResponse, TrainerSessionConfig } from '../types/trainer'
+import { EMPTY_MILESTONES } from '../types/trainer'
+
+/** Легитимные слова — не проверять на вхождение корней мата */
+const SAFE_WORDS = [
+  'потребность',
+  'потребностям',
+  'потребности',
+  'потребностей',
+  'помощник',
+  'помощников',
+  'помощники',
+  'потребления',
+  'употребление',
+  'руководство',
+  'художник',
+  'оскорбление',
+]
 
 const PROFANITY_ROOTS = [
   'хуй',
@@ -38,6 +55,18 @@ const PROFANITY_ROOTS = [
   'охуи',
   'похуй',
   'похер',
+]
+
+/** Корни ≤3 символов — только как отдельное слово или короткая матерная форма */
+const SHORT_ROOT_MAX_LEN = 3
+
+/** Явный обход фильтра пробелами/символами между буквами */
+const OBFUSCATED_PATTERNS: RegExp[] = [
+  /б[\s\-_*.,!]*л[\s\-_*.,!]*[яь]/iu,
+  /п[\s\-_*.,!]*и[\s\-_*.,!]*з[\s\-_*.,!]*д/iu,
+  /[хx][\s\-_*.,!]*[уy][\s\-_*.,!]*[йиeе]/iu,
+  /[eеё][\s\-_*.,!]*[bб][\s\-_*.,!]*[aа@]/iu,
+  /с[\s\-_*.,!]*у[\s\-_*.,!]*[кk][\s\-_*.,!]*[aа@]/iu,
 ]
 
 const INSULT_WORDS = [
@@ -91,8 +120,6 @@ const ANGER_PHRASES = [
   'иди нах',
   'идите нах',
   'отвали',
-  'пошел в',
-  'пошёл в',
 ]
 
 function normalize(text: string): string {
@@ -104,18 +131,53 @@ function normalize(text: string): string {
     .trim()
 }
 
+function tokenize(normalized: string): string[] {
+  return normalized.split(/\s+/).filter(Boolean)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function containsAsWord(normalized: string, word: string): boolean {
   if (!word) return false
-  const pattern = new RegExp(`(?:^|[\\s,.!?])${word}(?:$|[\\s,.!?])`, 'i')
+  const pattern = new RegExp(`(?:^|[\\s,.!?])${escapeRegExp(word)}(?:$|[\\s,.!?])`, 'i')
   return pattern.test(normalized) || normalized === word
+}
+
+function isSafeToken(token: string): boolean {
+  return SAFE_WORDS.some(
+    (safe) => token === safe || token.startsWith(safe) || safe.startsWith(token),
+  )
+}
+
+function rootMatchesToken(root: string, token: string): boolean {
+  if (token === root) return true
+  if (!token.startsWith(root)) return false
+
+  if (root.length <= SHORT_ROOT_MAX_LEN) {
+    return token.length <= root.length + 3
+  }
+
+  return token.length <= root.length + 5
+}
+
+function containsObfuscatedProfanity(text: string): boolean {
+  return OBFUSCATED_PATTERNS.some((pattern) => pattern.test(text))
 }
 
 function containsProfanityRoots(text: string): boolean {
   const normalized = normalize(text)
-  const compact = normalized.replace(/\s/g, '')
-  return PROFANITY_ROOTS.some(
-    (root) => normalized.includes(root) || compact.includes(root),
-  )
+
+  for (const token of tokenize(normalized)) {
+    if (isSafeToken(token)) continue
+
+    for (const root of PROFANITY_ROOTS) {
+      if (rootMatchesToken(root, token)) return true
+    }
+  }
+
+  return false
 }
 
 function containsInsults(text: string): boolean {
@@ -125,35 +187,26 @@ function containsInsults(text: string): boolean {
 
 function containsLatinProfanity(text: string): boolean {
   const normalized = normalize(text)
-  const compact = normalized.replace(/\s/g, '')
-  return LATIN_PROFANITY.some(
-    (word) => containsAsWord(normalized, word) || compact.includes(word),
+  return tokenize(normalized).some((token) =>
+    LATIN_PROFANITY.some((word) => token === word || token.startsWith(word)),
   )
 }
 
-function isAggressiveCaps(text: string): boolean {
-  const letters = text.replace(/[^a-zA-ZА-Яа-яЁё]/g, '')
-  if (letters.length < 12) return false
-
-  const upperCount = (text.match(/[A-ZА-ЯЁ]/g) ?? []).length
-  if (upperCount / letters.length < 0.75) return false
-
+function containsAngerPhrases(text: string): boolean {
   const normalized = normalize(text)
-  return (
-    ANGER_PHRASES.some((phrase) => normalized.includes(phrase)) ||
-    containsInsults(text) ||
-    containsProfanityRoots(text)
-  )
+  return ANGER_PHRASES.some((phrase) => normalized.includes(phrase))
 }
 
 export function containsProfanityOrAbuse(text: string): boolean {
   if (!text.trim()) return false
-  return (
-    containsProfanityRoots(text) ||
-    containsInsults(text) ||
-    containsLatinProfanity(text) ||
-    isAggressiveCaps(text)
-  )
+
+  const profanity = containsProfanityRoots(text) || containsObfuscatedProfanity(text)
+  const insult = containsInsults(text)
+  const latin = containsLatinProfanity(text)
+  const anger = containsAngerPhrases(text)
+
+  // CAPS сам по себе не триггерит — только мат, оскорбления, латиница или агрессивные фразы
+  return profanity || insult || latin || anger
 }
 
 export function getNpcSpeakerName(session: TrainerSessionConfig): string {
@@ -174,6 +227,8 @@ export function buildProfanityHardStopResponse(
     communication_efficiency: 0,
     is_auto_completed: true,
     hint_from_mentor: { mentor_name: null, tip: null },
+    milestones: { ...EMPTY_MILESTONES },
+    hint_on_demand: '',
     dialogue: {
       speaker: getNpcSpeakerName(session),
       text: 'В таком тоне я разговор продолжать не буду. Диалог окончен.',

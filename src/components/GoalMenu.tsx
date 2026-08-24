@@ -4,7 +4,6 @@ import { learningGoals, type GoalId } from '../data/learningGoals'
 interface GoalMenuProps {
   onSelect: (goalId: GoalId) => void
   onStartPractice: () => void
-  allModulesComplete?: boolean
 }
 
 const cardVariants = {
@@ -16,7 +15,7 @@ const cardVariants = {
   }),
 }
 
-export function GoalMenu({ onSelect, onStartPractice, allModulesComplete }: GoalMenuProps) {
+export function GoalMenu({ onSelect, onStartPractice }: GoalMenuProps) {
   return (
     <div className="flex min-h-screen w-full flex-col items-center justify-center px-4 py-12">
       <motion.p
@@ -79,12 +78,10 @@ export function GoalMenu({ onSelect, onStartPractice, allModulesComplete }: Goal
           className="mt-1 w-full cursor-pointer rounded-3xl border border-[#d4b896]/45 bg-gradient-to-br from-[#f3e8dc]/95 via-[#eadfce]/95 to-[#e0d2c4]/95 p-6 text-left shadow-[0_8px_28px_rgba(180,140,100,0.18)] backdrop-blur-md transition hover:brightness-[1.02] sm:col-span-3 sm:mt-3 sm:p-7"
         >
           <h2 className="text-lg font-bold text-[#5c4033] sm:text-xl">
-            {allModulesComplete ? 'Комплексный тренажер: Треугольник интересов' : 'Сразу к практике'}
+            Комплексный тренажер
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-[#8b635a] sm:text-base">
-            {allModulesComplete
-              ? 'Все модули пройдены — проверьте себя в финальном сценарии с двумя собеседниками сразу'
-              : 'Пропустите обучение и попробуйте себя в диалоговом тренажере эффективных коммуникаций'}
+            Потренируйтесь в применении навыков эффективной коммуникации
           </p>
         </motion.button>
       </div>

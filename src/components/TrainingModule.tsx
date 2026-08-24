@@ -130,35 +130,18 @@ function ProgressBar({
 }
 
 function FinaleActions({
-  onStartTrainer,
   onStartComprehensive,
   showComprehensive,
   onRestart,
   onBackToMenu,
-  theme,
 }: {
-  onStartTrainer?: () => void
   onStartComprehensive?: () => void
   showComprehensive?: boolean
   onRestart: () => void
   onBackToMenu: () => void
-  theme: TrainingTheme
 }) {
   return (
     <div className="mt-6 flex w-full flex-col items-center gap-3">
-      {onStartTrainer && (
-        <button
-          type="button"
-          onClick={onStartTrainer}
-          className="w-full max-w-xs cursor-pointer rounded-full px-6 py-2.5 text-sm font-semibold shadow-md transition hover:brightness-105 active:scale-[0.98] sm:max-w-sm"
-          style={{
-            background: `linear-gradient(to right, ${theme.buttonFrom}, ${theme.buttonVia}, ${theme.buttonTo})`,
-            color: theme.buttonText,
-          }}
-        >
-          Перейти к тренажеру модуля
-        </button>
-      )}
       {showComprehensive && onStartComprehensive && (
         <button
           type="button"
@@ -193,7 +176,6 @@ interface TrainingModuleProps {
   Avatar: ComponentType
   goalId: GoalId
   onBackToMenu: () => void
-  onStartTrainer?: () => void
   onStartComprehensive?: () => void
   onModuleComplete?: (goalId: GoalId) => void
   allModulesComplete?: boolean
@@ -204,7 +186,6 @@ export function TrainingModule({
   Avatar,
   goalId,
   onBackToMenu,
-  onStartTrainer,
   onStartComprehensive,
   onModuleComplete,
   allModulesComplete,
@@ -353,12 +334,10 @@ export function TrainingModule({
                 {complete.message}
               </p>
               <FinaleActions
-                onStartTrainer={onStartTrainer}
                 onStartComprehensive={onStartComprehensive}
                 showComprehensive={allModulesComplete}
                 onRestart={restart}
                 onBackToMenu={onBackToMenu}
-                theme={theme}
               />
             </motion.div>
           ) : isFinaleStep ? (
@@ -388,12 +367,10 @@ export function TrainingModule({
                 </div>
               </div>
               <FinaleActions
-                onStartTrainer={onStartTrainer}
                 onStartComprehensive={onStartComprehensive}
                 showComprehensive={allModulesComplete}
                 onRestart={restart}
                 onBackToMenu={onBackToMenu}
-                theme={theme}
               />
             </motion.div>
           ) : (

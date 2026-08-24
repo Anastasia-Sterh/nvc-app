@@ -13,6 +13,7 @@ import type {
   AiTurnResponse,
   ChatMessage,
   FinalSummary,
+  NegotiationMilestones,
   SimulationEndReason,
   SimulationResult,
   SingleMessageEvaluation,
@@ -28,6 +29,7 @@ export async function runSimulationTurn(
     isFinishing?: boolean
     endReason?: SimulationEndReason
     model?: string
+    milestones?: NegotiationMilestones
   },
 ): Promise<AiTurnResponse> {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
@@ -47,6 +49,7 @@ export async function runSimulationTurn(
   const apiMessages = buildChatApiMessages(session, messages, {
     userMessageIndex: options.userMessageIndex,
     isFinishing: options.isFinishing,
+    milestones: options.milestones,
     reason:
       options.endReason === 'max_messages'
         ? 'достигнут лимит сообщений'
@@ -72,6 +75,7 @@ export async function runSimulationTurn(
       parsed,
       options.userMessageIndex,
       session.maxUserMessages,
+      options.milestones,
     )
   }
 
@@ -94,9 +98,42 @@ export function mergeEvaluations(
   incoming: SingleMessageEvaluation[],
 ): SingleMessageEvaluation[] {
   const map = new Map<number, SingleMessageEvaluation>()
-  for (const ev of existing) map.set(ev.user_message_index, ev)
-  for (const ev of incoming) map.set(ev.user_message_index, ev)
+  for (const ev of existing) {
+    if (ev.user_message_index >= 1) map.set(ev.user_message_index, ev)
+  }
+  for (const ev of incoming) {
+    if (ev.user_message_index >= 1) map.set(ev.user_message_index, ev)
+  }
   return [...map.values()].sort((a, b) => a.user_message_index - b.user_message_index)
+}
+
+/** Keep only real user turns; replace AI-echoed bot text with actual user messages. */
+export function sanitizeMessageEvaluations(
+  messages: ChatMessage[],
+  evaluations: SingleMessageEvaluation[],
+): SingleMessageEvaluation[] {
+  const userMessages = messages.filter((m) => m.role === 'user')
+  const assistantTexts = new Set(
+    messages.filter((m) => m.role === 'assistant').map((m) => m.text.trim()),
+  )
+
+  const seen = new Set<number>()
+  const result: SingleMessageEvaluation[] = []
+
+  for (const ev of evaluations) {
+    if (ev.user_message_index < 1 || seen.has(ev.user_message_index)) continue
+
+    const userMsg = userMessages[ev.user_message_index - 1]
+    if (!userMsg) continue
+
+    const text = userMsg.text.trim()
+    if (!text || assistantTexts.has(text)) continue
+
+    seen.add(ev.user_message_index)
+    result.push({ ...ev, user_message_text: text })
+  }
+
+  return result.sort((a, b) => a.user_message_index - b.user_message_index)
 }
 
 export function buildSimulationResult(
@@ -105,6 +142,7 @@ export function buildSimulationResult(
   evaluations: SingleMessageEvaluation[],
   finalSummary: FinalSummary | null,
   session: TrainerSessionConfig,
+  messages: ChatMessage[] = [],
 ): SimulationResult {
   const fallbackSummary: FinalSummary = {
     overall_score: finalEfficiency || session.debrief.score,
@@ -117,6 +155,6 @@ export function buildSimulationResult(
     endReason,
     finalEfficiency,
     finalSummary: finalSummary ?? fallbackSummary,
-    messageEvaluations: evaluations,
+    messageEvaluations: sanitizeMessageEvaluations(messages, evaluations),
   }
 }
