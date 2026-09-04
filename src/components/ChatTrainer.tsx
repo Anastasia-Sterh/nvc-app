@@ -22,6 +22,11 @@ import {
   MILESTONE_STEPS,
 } from '../services/trainerSimulation'
 import { isMeaninglessUserMessage } from '../services/messageQuality'
+import {
+  clearChatSession,
+  readChatSession,
+  writeChatSession,
+} from '../services/appPersistence'
 import type {
   AiTurnResponse,
   ChatMessage,
@@ -71,7 +76,23 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   )
 }
 
-function EfficiencyBar({ value }: { value: number }) {
+function EfficiencyBar({ value, compact = false }: { value: number; compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="mt-1.5 flex items-center gap-2">
+        <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/60">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-[#ffe08a] via-[#ffc9b5] to-[#a8d5a0]"
+            initial={{ width: 0 }}
+            animate={{ width: `${value}%` }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          />
+        </div>
+        <span className="shrink-0 text-[10px] font-bold text-[#5c4033]">{Math.round(value)}%</span>
+      </div>
+    )
+  }
+
   return (
     <div className="mt-3">
       <div className="mb-1 flex items-center justify-between text-xs">
@@ -86,6 +107,113 @@ function EfficiencyBar({ value }: { value: number }) {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         />
       </div>
+    </div>
+  )
+}
+
+function MessageCounterBadge({
+  current,
+  max,
+  size = 'default',
+}: {
+  current: number
+  max: number
+  size?: 'default' | 'large'
+}) {
+  const ratio = max > 0 ? current / max : 0
+  const remaining = max - current
+
+  let colorClass =
+    'border-[#a8d5a0] bg-[#e8f5e9] text-[#4a6b45]'
+  if (ratio >= 0.6) {
+    colorClass = 'border-[#ffc9b5] bg-[#fff3e0] text-[#b45309]'
+  }
+  if (ratio >= 0.8 || remaining <= 2) {
+    colorClass = 'border-[#ffb8c9] bg-[#ffebee] text-[#c62828]'
+  }
+
+  const sizeClass =
+    size === 'large'
+      ? 'px-3 py-1.5 text-base'
+      : 'px-2.5 py-1 text-sm'
+
+  return (
+    <div
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border font-bold tabular-nums ${colorClass} ${sizeClass}`}
+      title={`Отправлено ${current} из ${max} сообщений`}
+    >
+      <span className="text-[10px] opacity-70" aria-hidden="true">
+        💬
+      </span>
+      <span>
+        {current}/{max}
+      </span>
+    </div>
+  )
+}
+
+function GoalIntroModal({
+  maxMessages,
+  onClose,
+}: {
+  maxMessages: number
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#5c4033]/25 p-4 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-sm rounded-2xl border border-white/60 bg-white/95 p-5 shadow-lg sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="goal-intro-title"
+      >
+        <p
+          id="goal-intro-title"
+          className="text-center text-lg font-bold leading-snug text-[#5c4033] sm:text-xl"
+        >
+          Наладьте контакт за {maxMessages} сообщений
+        </p>
+        <p className="mt-3 text-center text-sm leading-relaxed text-[#6b4540]">
+          У вас ограниченное число реплик — каждое сообщение важно для
+          эффективности диалога
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 w-full cursor-pointer rounded-full bg-gradient-to-r from-[#ffe08a] via-[#ffc9b5] to-[#ffb8c9] py-3 text-sm font-bold text-[#6b4540] shadow-sm transition hover:brightness-105"
+        >
+          Окейс!
+        </button>
+      </motion.div>
+    </div>
+  )
+}
+
+function MilestonesChips({ milestones }: { milestones: NegotiationMilestones }) {
+  const doneByKey = {
+    empathy: milestones.empathy_completed,
+    boundaries: milestones.boundaries_completed,
+    win_win: milestones.win_win_completed,
+  }
+
+  return (
+    <div className="flex gap-1.5 overflow-x-auto pb-0.5 pt-2">
+      {MILESTONE_STEPS.map((step) => {
+        const done = doneByKey[step.key]
+        const shortLabel = step.label.replace(/^Этап \d+: /, '')
+        return (
+          <span
+            key={step.key}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium leading-none ${
+              done ? 'bg-[#f0faf0] text-[#4a6b45]' : 'bg-white/70 text-[#8b635a]'
+            }`}
+          >
+            {done ? '☑' : '☐'} {shortLabel}
+          </span>
+        )
+      })}
     </div>
   )
 }
@@ -187,24 +315,43 @@ export function ChatTrainer({
   onBackToMenu,
 }: ChatTrainerProps) {
   const { apiKey, hasKey } = useOpenRouterKey()
+  const savedSession = readChatSession(session.id)
 
   const [messages, setMessages] = useState<ChatMessage[]>(
-    session.initialMessages.filter((m) => m.role === 'assistant'),
+    () =>
+      savedSession?.messages ??
+      session.initialMessages.filter((m) => m.role === 'assistant'),
   )
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [efficiency, setEfficiency] = useState(0)
+  const [efficiency, setEfficiency] = useState(savedSession?.efficiency ?? 0)
   const [mentorHint, setMentorHint] = useState<AiTurnResponse['hint_from_mentor'] | null>(
-    null,
+    savedSession?.mentorHint ?? null,
   )
-  const [evaluations, setEvaluations] = useState<SingleMessageEvaluation[]>([])
-  const [milestones, setMilestones] = useState<NegotiationMilestones>(EMPTY_MILESTONES)
-  const [hintOnDemand, setHintOnDemand] = useState('')
-  const [hintsRemaining, setHintsRemaining] = useState(MAX_ON_DEMAND_HINTS)
+  const [evaluations, setEvaluations] = useState<SingleMessageEvaluation[]>(
+    savedSession?.evaluations ?? [],
+  )
+  const [milestones, setMilestones] = useState<NegotiationMilestones>(
+    savedSession?.milestones ?? EMPTY_MILESTONES,
+  )
+  const [hintOnDemand, setHintOnDemand] = useState(savedSession?.hintOnDemand ?? '')
+  const [hintsRemaining, setHintsRemaining] = useState(
+    savedSession?.hintsRemaining ?? MAX_ON_DEMAND_HINTS,
+  )
   const [showHintModal, setShowHintModal] = useState(false)
+  const [showMobileMilestones, setShowMobileMilestones] = useState(false)
+  const [showGoalModal, setShowGoalModal] = useState(
+    () => session.id === 'comprehensive' && !savedSession?.goalModalSeen,
+  )
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
 
   const isComprehensive = session.id === 'comprehensive'
+
+  const finishSimulation = (result: SimulationResult) => {
+    clearChatSession()
+    onFinish(result)
+  }
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const finishingRef = useRef(false)
@@ -231,6 +378,48 @@ export function ChatTrainer({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, isLoading, mentorHint])
+
+  useEffect(() => {
+    writeChatSession({
+      trainerId: session.id,
+      messages,
+      efficiency,
+      mentorHint,
+      evaluations,
+      milestones,
+      hintOnDemand,
+      hintsRemaining,
+      goalModalSeen: !showGoalModal,
+    })
+  }, [
+    session.id,
+    messages,
+    efficiency,
+    mentorHint,
+    evaluations,
+    milestones,
+    hintOnDemand,
+    hintsRemaining,
+    showGoalModal,
+  ])
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const updateKeyboardOffset = () => {
+      const offset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      setKeyboardOffset(offset)
+    }
+
+    updateKeyboardOffset()
+    viewport.addEventListener('resize', updateKeyboardOffset)
+    viewport.addEventListener('scroll', updateKeyboardOffset)
+    return () => {
+      viewport.removeEventListener('resize', updateKeyboardOffset)
+      viewport.removeEventListener('scroll', updateKeyboardOffset)
+    }
+  }, [])
 
   const applyMentorHint = (response: AiTurnResponse) => {
     if (
@@ -275,7 +464,7 @@ export function ChatTrainer({
         }
       }
 
-      onFinish(
+      finishSimulation(
         buildSimulationResult(
           endReason,
           finalEfficiency,
@@ -288,7 +477,7 @@ export function ChatTrainer({
     } catch (err) {
       finishingRef.current = false
       setError(err instanceof Error ? err.message : 'Ошибка завершения симуляции')
-      onFinish(
+      finishSimulation(
         buildSimulationResult(
           endReason,
           currentEfficiency,
@@ -332,7 +521,7 @@ export function ChatTrainer({
 
     if (shouldAutoComplete && response.final_summary) {
       setTimeout(() => {
-        onFinish(
+        finishSimulation(
           buildSimulationResult(
             'auto',
             response.communication_efficiency,
@@ -453,29 +642,88 @@ export function ChatTrainer({
   }
 
   return (
-    <div className="flex h-dvh max-h-dvh w-full max-w-xl flex-col px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4">
-      <button
-        type="button"
-        onClick={onBackToMenu}
-        className="mb-2 w-fit shrink-0 cursor-pointer rounded-full border border-white/60 bg-white/75 px-3.5 py-1.5 text-sm font-semibold text-[#7a5248] shadow-sm backdrop-blur-sm transition hover:bg-white/90 sm:mb-3"
-      >
-        ← В меню
-      </button>
+    <div
+      className={`flex h-dvh max-h-dvh w-full flex-col ${
+        isComprehensive
+          ? 'max-w-none px-0 pt-[env(safe-area-inset-top)] pb-0 sm:max-w-xl sm:px-4 sm:pt-[max(0.75rem,env(safe-area-inset-top))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+          : 'max-w-xl px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4'
+      }`}
+    >
+      {!isComprehensive && (
+        <button
+          type="button"
+          onClick={onBackToMenu}
+          className="mb-2 w-fit shrink-0 cursor-pointer rounded-full border border-white/60 bg-white/75 px-3.5 py-1.5 text-sm font-semibold text-[#7a5248] shadow-sm backdrop-blur-sm transition hover:bg-white/90 sm:mb-3"
+        >
+          ← В меню
+        </button>
+      )}
 
-      <div className="flex min-h-0 flex-1 flex-col rounded-3xl border border-white/60 bg-white/55 shadow-[0_8px_32px_rgba(255,180,140,0.18)] backdrop-blur-md">
-        <div className="shrink-0 border-b border-white/50 px-3 py-3 sm:px-5 sm:py-4">
-          {isComprehensive ? (
-            <div className="flex items-center justify-between gap-3">
-              <p className="min-w-0 flex-1 rounded-xl bg-gradient-to-r from-[#fff9f2] to-[#ffe8d6] px-3 py-2 text-sm font-semibold leading-snug text-[#5c4033]">
-                Наладьте контакт за {maxMessages ?? 10} сообщений
-              </p>
-              {maxMessages != null && (
-                <p className="shrink-0 text-xs font-semibold text-[#a07068]">
-                  {userMessageCount}/{maxMessages}
-                </p>
-              )}
+      {isComprehensive && (
+        <button
+          type="button"
+          onClick={onBackToMenu}
+          className="mb-2 hidden w-fit shrink-0 cursor-pointer rounded-full border border-white/60 bg-white/75 px-3.5 py-1.5 text-sm font-semibold text-[#7a5248] shadow-sm backdrop-blur-sm transition hover:bg-white/90 sm:mb-3 sm:block"
+        >
+          ← В меню
+        </button>
+      )}
+
+      <div
+        className={`flex min-h-0 flex-1 flex-col ${
+          isComprehensive
+            ? 'rounded-none border-0 bg-white/55 shadow-none sm:rounded-3xl sm:border sm:border-white/60 sm:shadow-[0_8px_32px_rgba(255,180,140,0.18)] sm:backdrop-blur-md'
+            : 'rounded-3xl border border-white/60 bg-white/55 shadow-[0_8px_32px_rgba(255,180,140,0.18)] backdrop-blur-md'
+        }`}
+      >
+        {isComprehensive ? (
+          <>
+            {/* Mobile messenger header */}
+            <header className="sticky top-0 z-10 shrink-0 border-b border-white/50 bg-white/90 px-3 py-2 backdrop-blur-md sm:hidden">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onBackToMenu}
+                  className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-lg text-[#7a5248] transition hover:bg-white/70"
+                  aria-label="В меню"
+                >
+                  ←
+                </button>
+                {maxMessages != null && (
+                  <MessageCounterBadge
+                    current={userMessageCount}
+                    max={maxMessages}
+                    size="large"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <EfficiencyBar value={efficiency} compact />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMobileMilestones((v) => !v)}
+                  className="shrink-0 cursor-pointer rounded-full bg-white/70 px-2.5 py-1.5 text-[10px] font-semibold text-[#8b635a] transition hover:bg-white"
+                >
+                  Этапы {showMobileMilestones ? '▲' : '▼'}
+                </button>
+              </div>
+              {showMobileMilestones && <MilestonesChips milestones={milestones} />}
+            </header>
+
+            {/* Desktop header */}
+            <div className="hidden shrink-0 border-b border-white/50 px-5 py-4 sm:block">
+              <div className="flex items-center justify-between gap-3">
+                {maxMessages != null && (
+                  <MessageCounterBadge current={userMessageCount} max={maxMessages} />
+                )}
+                <p className="text-xs text-[#a07068]">сообщений отправлено</p>
+              </div>
+              <EfficiencyBar value={efficiency} />
+              <MilestonesPanel milestones={milestones} />
             </div>
-          ) : (
+          </>
+        ) : (
+          <div className="shrink-0 border-b border-white/50 px-3 py-3 sm:px-5 sm:py-4">
             <div className="flex items-center gap-3">
               <div className="flex -space-x-2">
                 {Avatars.map((Avatar, i) => (
@@ -498,10 +746,9 @@ export function ChatTrainer({
                 )}
               </div>
             </div>
-          )}
-          <EfficiencyBar value={efficiency} />
-          {isComprehensive && <MilestonesPanel milestones={milestones} />}
-        </div>
+            <EfficiencyBar value={efficiency} />
+          </div>
+        )}
 
         <div
           ref={scrollRef}
@@ -516,19 +763,83 @@ export function ChatTrainer({
         </div>
 
         {mentorHint?.tip && efficiency < EFFICIENCY_HINT_THRESHOLD && (
-          <div className="mx-4 mb-3 rounded-2xl border border-[#a8d5a0]/50 bg-[#f0faf0]/90 px-4 py-3 sm:mx-5">
-            <p className="text-xs font-bold text-[#4a6b45]">
+          <div
+            className={`mx-3 mb-2 rounded-2xl border border-[#a8d5a0]/50 bg-[#f0faf0]/90 px-3 py-2 sm:mx-5 sm:mb-3 sm:px-4 sm:py-3 ${
+              isComprehensive ? 'max-sm:mx-2 max-sm:rounded-xl max-sm:py-2' : ''
+            }`}
+          >
+            <p className="text-[11px] font-bold text-[#4a6b45] sm:text-xs">
               Подсказка · {mentorHint.mentor_name ?? session.mentorLabel}
             </p>
-            <p className="mt-1 text-sm leading-relaxed text-[#4a6b45]">{mentorHint.tip}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-[#4a6b45] sm:mt-1 sm:text-sm">
+              {mentorHint.tip}
+            </p>
           </div>
         )}
 
         {error && (
-          <p className="mx-4 mb-2 text-xs text-[#8b5050] sm:mx-5">{error}</p>
+          <p className="mx-3 mb-1 text-xs text-[#8b5050] sm:mx-5 sm:mb-2">{error}</p>
         )}
 
-        <div className="shrink-0 border-t border-white/50 px-3 py-3 sm:px-5">
+        {/* Mobile Telegram-style composer (comprehensive) */}
+        {isComprehensive && (
+          <div
+            className="shrink-0 border-t border-white/50 bg-white/90 px-2 pt-2 backdrop-blur-md sm:hidden"
+            style={{
+              paddingBottom: `max(0.5rem, calc(env(safe-area-inset-bottom) + ${keyboardOffset}px))`,
+            }}
+          >
+            <div className="flex items-end gap-1.5">
+              <button
+                type="button"
+                onClick={handleRequestHint}
+                disabled={
+                  isLoading ||
+                  hintsRemaining <= 0 ||
+                  !hintOnDemand.trim() ||
+                  atMessageLimit
+                }
+                className="mb-0.5 flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-lg transition hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label={`Подсказка, осталось ${hintsRemaining}`}
+              >
+                💡
+              </button>
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                placeholder={atMessageLimit ? 'Лимит сообщений' : 'Сообщение...'}
+                disabled={isLoading || atMessageLimit}
+                className="min-w-0 flex-1 rounded-3xl border border-white/70 bg-white/80 px-4 py-2.5 text-base text-[#5c4033] outline-none placeholder:text-[#c4a090] focus:border-[#ffc9b5] disabled:opacity-60"
+              />
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading || atMessageLimit || !hasKey}
+                className="mb-0.5 flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-[#ffe08a] via-[#ffc9b5] to-[#ffb8c9] text-lg font-bold text-[#6b4540] shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Отправить"
+              >
+                ↑
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={handleFinish}
+              disabled={isLoading}
+              className="mt-1.5 w-full cursor-pointer py-1 text-center text-[11px] font-medium text-[#a07068] transition hover:text-[#7a5248] disabled:opacity-50"
+            >
+              Завершить тренировку
+            </button>
+          </div>
+        )}
+
+        {/* Desktop / non-comprehensive composer */}
+        <div
+          className={`shrink-0 border-t border-white/50 px-3 py-3 sm:px-5 ${
+            isComprehensive ? 'hidden sm:block' : ''
+          }`}
+        >
           <div className="flex gap-2">
             <input
               type="text"
@@ -581,6 +892,13 @@ export function ChatTrainer({
           mentor={getActiveMentorForHint(milestones)}
           hint={hintOnDemand}
           onClose={() => setShowHintModal(false)}
+        />
+      )}
+
+      {showGoalModal && isComprehensive && maxMessages != null && (
+        <GoalIntroModal
+          maxMessages={maxMessages}
+          onClose={() => setShowGoalModal(false)}
         />
       )}
     </div>

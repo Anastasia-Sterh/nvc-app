@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useState, type ComponentType } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import { ArniAvatar } from './components/ArniAvatar'
 import { BjornAvatar } from './components/BjornAvatar'
 import { ChatTrainer } from './components/ChatTrainer'
@@ -16,6 +16,13 @@ import { getTrainerSession } from './data/trainerSessions'
 import { getTrainingModule } from './data/trainingModules'
 import { useModuleProgress } from './hooks/useModuleProgress'
 import { useWelcomeSeen } from './hooks/useWelcomeSeen'
+import {
+  clearChatSession,
+  getInitialNavigation,
+  writeNavigation,
+  writeMenuNavigation,
+  type NavigationState,
+} from './services/appPersistence'
 import type { SimulationResult, TrainerId, TrainerSessionConfig } from './types/trainer'
 
 type Screen = 'menu' | 'training' | 'briefing' | 'chat' | 'debrief' | 'coming-soon'
@@ -34,11 +41,29 @@ function App() {
   const { hasSeenWelcome, markWelcomeSeen } = useWelcomeSeen()
   const { markComplete, allComplete } = useModuleProgress()
   const [showWelcome, setShowWelcome] = useState(!hasSeenWelcome)
-  const [screen, setScreen] = useState<Screen>('menu')
-  const [activeGoalId, setActiveGoalId] = useState<GoalId | null>(null)
-  const [activeTrainerId, setActiveTrainerId] = useState<TrainerId | null>(null)
-  const [trainerSession, setTrainerSession] = useState<TrainerSessionConfig | null>(null)
-  const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null)
+
+  const initialNav = getInitialNavigation()
+  const [screen, setScreen] = useState<Screen>(initialNav.screen)
+  const [activeGoalId, setActiveGoalId] = useState<GoalId | null>(initialNav.activeGoalId)
+  const [activeTrainerId, setActiveTrainerId] = useState<TrainerId | null>(
+    initialNav.activeTrainerId,
+  )
+  const [trainerSession, setTrainerSession] = useState<TrainerSessionConfig | null>(() =>
+    initialNav.activeTrainerId ? getTrainerSession(initialNav.activeTrainerId) ?? null : null,
+  )
+  const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(
+    initialNav.simulationResult,
+  )
+
+  useEffect(() => {
+    const nav: NavigationState = {
+      screen,
+      activeGoalId,
+      activeTrainerId,
+      simulationResult,
+    }
+    writeNavigation(nav)
+  }, [screen, activeGoalId, activeTrainerId, simulationResult])
 
   const closeWelcome = () => {
     markWelcomeSeen()
@@ -48,9 +73,11 @@ function App() {
   const startTrainer = (trainerId: TrainerId) => {
     const session = getTrainerSession(trainerId)
     if (!session) return
+    clearChatSession()
     setActiveTrainerId(trainerId)
     setTrainerSession(session)
     setSimulationResult(null)
+    setActiveGoalId(null)
     setScreen(session.briefing ? 'briefing' : 'chat')
   }
 
@@ -69,6 +96,8 @@ function App() {
   }
 
   const goToMenu = () => {
+    clearChatSession()
+    writeMenuNavigation()
     setScreen('menu')
     setActiveGoalId(null)
     setActiveTrainerId(null)

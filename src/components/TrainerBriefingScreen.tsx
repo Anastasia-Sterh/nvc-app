@@ -18,7 +18,7 @@ export function TrainerBriefingScreen({
   const briefing = session.briefing!
 
   return (
-    <div className="flex min-h-dvh w-full items-start justify-center overflow-y-auto px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:items-center sm:py-8">
+    <div className="flex min-h-dvh w-full flex-col items-start justify-center overflow-y-auto px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center sm:px-4 sm:py-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -33,22 +33,35 @@ export function TrainerBriefingScreen({
           ← В меню
         </button>
 
-        <div className="flex items-center gap-3">
-          <div className="flex -space-x-1">
+        <div className="sm:hidden">
+          <h1 className="text-center text-xl font-bold text-[#5c4033]">
+            Комплексный тренажер
+          </h1>
+          <ul className="mt-4 flex items-end justify-center gap-8">
             {Avatars.map((Avatar, i) => (
-              <div key={i} className="origin-bottom scale-[0.7] [&_span:last-child]:hidden">
+              <li key={i}>
+                <div className="origin-bottom scale-[0.7]">
+                  <Avatar />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="hidden items-center gap-4 sm:flex">
+          <div className="flex shrink-0 -space-x-1">
+            {Avatars.map((Avatar, i) => (
+              <div
+                key={i}
+                className="origin-bottom scale-[0.7] [&_span:last-child]:hidden"
+              >
                 <Avatar />
               </div>
             ))}
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#c49080]">
-              <span className="line-clamp-2">{session.mentorLabel} · {session.topic}</span>
-            </p>
-            <h1 className="text-xl font-bold text-[#5c4033] sm:text-2xl">
-              {session.title}
-            </h1>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#c49080]">
+            {session.mentorLabel} · {session.topic}
+          </p>
         </div>
 
         <div className="mt-6 space-y-4">
@@ -56,7 +69,7 @@ export function TrainerBriefingScreen({
             <h2 className="text-xs font-bold uppercase tracking-wide text-[#c49080]">
               Контекст
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-[#6b4540]">
+            <p className="mt-2 break-words text-sm leading-relaxed text-[#6b4540]">
               {briefing.context}
             </p>
           </section>
@@ -66,7 +79,7 @@ export function TrainerBriefingScreen({
               <h2 className="text-xs font-bold uppercase tracking-wide text-[#c49080]">
                 Ваша роль
               </h2>
-              <p className="mt-1 text-sm font-semibold text-[#5c4033]">
+              <p className="mt-1 break-words text-sm font-semibold text-[#5c4033]">
                 {briefing.role}
               </p>
             </div>
@@ -74,7 +87,7 @@ export function TrainerBriefingScreen({
               <h2 className="text-xs font-bold uppercase tracking-wide text-[#c49080]">
                 Ваша цель
               </h2>
-              <p className="mt-1 text-sm leading-relaxed text-[#5c4033]">
+              <p className="mt-1 break-words text-sm leading-relaxed text-[#5c4033]">
                 {briefing.goal}
               </p>
             </div>

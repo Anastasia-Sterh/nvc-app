@@ -2,6 +2,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState, type ComponentType } from 'react'
 import type { GoalId } from '../data/learningGoals'
 import type { TrainingModuleConfig, TrainingTheme } from '../types/training'
+import {
+  clearTrainingProgress,
+  readTrainingProgress,
+  writeTrainingProgress,
+} from '../services/appPersistence'
 
 const smoothEase = [0.22, 1, 0.36, 1] as const
 
@@ -192,11 +197,15 @@ export function TrainingModule({
 }: TrainingModuleProps) {
   const { steps, theme, complete } = config
 
-  const [stepIndex, setStepIndex] = useState(0)
-  const [messageIndex, setMessageIndex] = useState(0)
-  const [showQuiz, setShowQuiz] = useState(false)
-  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null)
-  const [isComplete, setIsComplete] = useState(false)
+  const savedProgress = readTrainingProgress(goalId)
+
+  const [stepIndex, setStepIndex] = useState(savedProgress?.stepIndex ?? 0)
+  const [messageIndex, setMessageIndex] = useState(savedProgress?.messageIndex ?? 0)
+  const [showQuiz, setShowQuiz] = useState(savedProgress?.showQuiz ?? false)
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(
+    savedProgress?.selectedOptionId ?? null,
+  )
+  const [isComplete, setIsComplete] = useState(savedProgress?.isComplete ?? false)
 
   const step = steps[stepIndex]
   const isFinaleStep = Boolean(step.isFinale)
@@ -247,6 +256,7 @@ export function TrainingModule({
   }
 
   const restart = () => {
+    clearTrainingProgress(goalId)
     setIsComplete(false)
     setStepIndex(0)
     resetStepState()
@@ -255,6 +265,16 @@ export function TrainingModule({
   const showBubble = !showQuiz
   const bubbleKey = `${stepIndex}-${messageIndex}`
   const showEndScreen = isComplete || isFinaleStep
+
+  useEffect(() => {
+    writeTrainingProgress(goalId, {
+      stepIndex,
+      messageIndex,
+      showQuiz,
+      selectedOptionId,
+      isComplete,
+    })
+  }, [goalId, stepIndex, messageIndex, showQuiz, selectedOptionId, isComplete])
 
   useEffect(() => {
     if (showEndScreen && onModuleComplete) {
