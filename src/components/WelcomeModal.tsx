@@ -21,7 +21,7 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.3 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-[#5c4033]/25 px-4 backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-end justify-center bg-[#5c4033]/25 px-3 py-4 backdrop-blur-sm sm:items-center sm:px-4"
         onClick={onClose}
       >
         <motion.div
@@ -33,7 +33,7 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
           aria-modal="true"
           aria-labelledby="welcome-title"
           onClick={(e) => e.stopPropagation()}
-          className="relative w-full max-w-lg rounded-3xl border border-white/60 bg-white/92 p-5 shadow-[0_16px_48px_rgba(255,180,140,0.35)] backdrop-blur-md sm:p-6"
+          className="relative w-full max-w-lg max-h-[min(90dvh,640px)] overflow-y-auto rounded-3xl border border-white/60 bg-white/92 p-5 shadow-[0_16px_48px_rgba(255,180,140,0.35)] backdrop-blur-md sm:p-6"
         >
           <button
             type="button"

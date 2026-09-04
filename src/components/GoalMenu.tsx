@@ -17,7 +17,7 @@ const cardVariants = {
 
 export function GoalMenu({ onSelect, onStartPractice }: GoalMenuProps) {
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center px-4 py-12">
+    <div className="flex min-h-dvh w-full flex-col items-center justify-center px-4 py-8 sm:py-12">
       <motion.p
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -30,12 +30,12 @@ export function GoalMenu({ onSelect, onStartPractice }: GoalMenuProps) {
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.05 }}
-        className="mb-10 max-w-md text-center text-2xl font-bold leading-tight text-[#5c4033] sm:text-3xl"
+        className="mb-8 max-w-md text-center text-xl font-bold leading-tight text-[#5c4033] sm:mb-10 sm:text-3xl"
       >
         Чему ты хочешь научиться?
       </motion.h1>
 
-      <div className="mx-auto grid w-[17rem] grid-cols-1 place-items-stretch gap-6 sm:w-[47.5rem] sm:grid-cols-3 sm:gap-5">
+      <div className="mx-auto grid w-full max-w-[17rem] grid-cols-1 place-items-stretch gap-5 sm:w-[47.5rem] sm:max-w-none sm:grid-cols-3 sm:gap-5">
         {learningGoals.map((goal, i) => (
           <motion.button
             key={goal.id}

@@ -6,7 +6,7 @@ interface ComingSoonNoticeProps {
 
 export function ComingSoonNotice({ onBack }: ComingSoonNoticeProps) {
   return (
-    <div className="flex min-h-screen w-full max-w-xl flex-col items-center justify-center px-4 py-12">
+    <div className="flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-4 py-8 sm:py-12">
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}

@@ -12,6 +12,7 @@ import {
   containsProfanityOrAbuse,
 } from '../services/profanityFilter'
 import {
+  buildMeaninglessMessageResponse,
   dialogueToChatMessage,
   EFFICIENCY_AUTO_COMPLETE,
   EFFICIENCY_HINT_THRESHOLD,
@@ -20,6 +21,7 @@ import {
   mergeMilestones,
   MILESTONE_STEPS,
 } from '../services/trainerSimulation'
+import { isMeaninglessUserMessage } from '../services/messageQuality'
 import type {
   AiTurnResponse,
   ChatMessage,
@@ -111,7 +113,8 @@ function MilestonesPanel({ milestones }: { milestones: NegotiationMilestones }) 
           >
             <span className="mt-0.5 shrink-0 font-mono text-xs">{done ? '☑' : '☐'}</span>
             <span>
-              <span className="font-semibold">{step.label}.</span> {step.description}
+              <span className="font-semibold">{step.label}.</span>{' '}
+              <span className="break-words">{step.description}</span>
             </span>
           </div>
         )
@@ -183,13 +186,12 @@ export function ChatTrainer({
   onFinish,
   onBackToMenu,
 }: ChatTrainerProps) {
-  const { apiKey, hasKey, persistKey, envKeyPresent } = useOpenRouterKey()
+  const { apiKey, hasKey } = useOpenRouterKey()
 
   const [messages, setMessages] = useState<ChatMessage[]>(
     session.initialMessages.filter((m) => m.role === 'assistant'),
   )
   const [input, setInput] = useState('')
-  const [keyInput, setKeyInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [efficiency, setEfficiency] = useState(0)
@@ -208,6 +210,7 @@ export function ChatTrainer({
   const finishingRef = useRef(false)
   const messagesRef = useRef(messages)
   const milestonesRef = useRef(milestones)
+  const efficiencyRef = useRef(efficiency)
 
   useEffect(() => {
     messagesRef.current = messages
@@ -216,6 +219,10 @@ export function ChatTrainer({
   useEffect(() => {
     milestonesRef.current = milestones
   }, [milestones])
+
+  useEffect(() => {
+    efficiencyRef.current = efficiency
+  }, [efficiency])
 
   const userMessageCount = messages.filter((m) => m.role === 'user').length
   const maxMessages = session.maxUserMessages
@@ -258,6 +265,7 @@ export function ChatTrainer({
           isFinishing: true,
           endReason,
           milestones: isComprehensive ? milestonesRef.current : undefined,
+          previousEfficiency: isComprehensive ? efficiencyRef.current : undefined,
         })
         finalSummary = response.final_summary
         finalEfficiency = response.communication_efficiency || currentEfficiency
@@ -350,7 +358,7 @@ export function ChatTrainer({
     const text = input.trim()
     if (!text || isLoading || atMessageLimit) return
     if (!hasKey) {
-      setError('Укажите OpenRouter API ключ для начала диалога')
+      setError('Тренажёр временно недоступен. Попробуйте позже.')
       return
     }
 
@@ -380,10 +388,24 @@ export function ChatTrainer({
       return
     }
 
+    if (isComprehensive && isMeaninglessUserMessage(text)) {
+      applyTurnResponse(
+        buildMeaninglessMessageResponse(
+          text,
+          nextUserIndex,
+          efficiencyRef.current,
+          milestonesRef.current,
+        ),
+      )
+      setIsLoading(false)
+      return
+    }
+
     try {
       const response = await runSimulationTurn(apiKey, session, messagesWithUser, {
         userMessageIndex: nextUserIndex,
-        milestones: isComprehensive ? milestones : undefined,
+        milestones: isComprehensive ? milestonesRef.current : undefined,
+        previousEfficiency: isComprehensive ? efficiencyRef.current : undefined,
       })
 
       applyTurnResponse(response)
@@ -430,81 +452,60 @@ export function ChatTrainer({
     void completeSimulation('manual', efficiency, evaluations)
   }
 
-  const handleSaveKey = () => {
-    if (!keyInput.trim()) return
-    persistKey(keyInput)
-    setKeyInput('')
-    setError(null)
-  }
-
   return (
-    <div className="flex min-h-screen w-full max-w-xl flex-col px-4 pb-4 pt-4">
+    <div className="flex h-dvh max-h-dvh w-full max-w-xl flex-col px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4">
       <button
         type="button"
         onClick={onBackToMenu}
-        className="mb-3 w-fit cursor-pointer rounded-full border border-white/60 bg-white/75 px-3.5 py-1.5 text-sm font-semibold text-[#7a5248] shadow-sm backdrop-blur-sm transition hover:bg-white/90"
+        className="mb-2 w-fit shrink-0 cursor-pointer rounded-full border border-white/60 bg-white/75 px-3.5 py-1.5 text-sm font-semibold text-[#7a5248] shadow-sm backdrop-blur-sm transition hover:bg-white/90 sm:mb-3"
       >
         ← В меню
       </button>
 
-      {!hasKey && (
-        <div className="mb-3 rounded-2xl border border-[#ffc9b5]/60 bg-white/80 p-4">
-          <p className="text-sm font-semibold text-[#5c4033]">OpenRouter API ключ</p>
-          <p className="mt-1 text-xs leading-relaxed text-[#8b635a]">
-            {envKeyPresent
-              ? 'Ключ из .env не найден. Введите ключ вручную или добавьте VITE_OPENROUTER_API_KEY в .env'
-              : 'Получите ключ на openrouter.ai/keys или добавьте VITE_OPENROUTER_API_KEY в .env'}
-          </p>
-          <div className="mt-3 flex gap-2">
-            <input
-              type="password"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="sk-or-..."
-              className="min-w-0 flex-1 rounded-xl border border-white/70 bg-white/70 px-3 py-2 text-sm outline-none focus:border-[#ffc9b5]"
-            />
-            <button
-              type="button"
-              onClick={handleSaveKey}
-              className="shrink-0 cursor-pointer rounded-xl bg-gradient-to-r from-[#ffe08a] to-[#ffb8c9] px-4 py-2 text-sm font-bold text-[#6b4540]"
-            >
-              Сохранить
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-3xl border border-white/60 bg-white/55 shadow-[0_8px_32px_rgba(255,180,140,0.18)] backdrop-blur-md">
-        <div className="border-b border-white/50 px-4 py-4 sm:px-5">
-          <div className="flex items-center gap-3">
-            <div className="flex -space-x-2">
-              {Avatars.map((Avatar, i) => (
-                <div key={i} className="origin-bottom scale-75">
-                  <Avatar />
-                </div>
-              ))}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#c49080]">
-                {session.mentorLabel}
+      <div className="flex min-h-0 flex-1 flex-col rounded-3xl border border-white/60 bg-white/55 shadow-[0_8px_32px_rgba(255,180,140,0.18)] backdrop-blur-md">
+        <div className="shrink-0 border-b border-white/50 px-3 py-3 sm:px-5 sm:py-4">
+          {isComprehensive ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 flex-1 rounded-xl bg-gradient-to-r from-[#fff9f2] to-[#ffe8d6] px-3 py-2 text-sm font-semibold leading-snug text-[#5c4033]">
+                Наладьте контакт за {maxMessages ?? 10} сообщений
               </p>
-              <h2 className="truncate text-base font-bold text-[#5c4033] sm:text-lg">
-                {session.title}
-              </h2>
               {maxMessages != null && (
-                <p className="mt-0.5 text-xs text-[#a07068]">
-                  Сообщений: {userMessageCount}/{maxMessages}
+                <p className="shrink-0 text-xs font-semibold text-[#a07068]">
+                  {userMessageCount}/{maxMessages}
                 </p>
               )}
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex -space-x-2">
+                {Avatars.map((Avatar, i) => (
+                  <div key={i} className="origin-bottom scale-75">
+                    <Avatar />
+                  </div>
+                ))}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#c49080]">
+                  {session.mentorLabel}
+                </p>
+                <h2 className="truncate text-base font-bold text-[#5c4033] sm:text-lg">
+                  {session.title}
+                </h2>
+                {maxMessages != null && (
+                  <p className="mt-0.5 text-xs text-[#a07068]">
+                    Сообщений: {userMessageCount}/{maxMessages}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
           <EfficiencyBar value={efficiency} />
           {isComprehensive && <MilestonesPanel milestones={milestones} />}
         </div>
 
         <div
           ref={scrollRef}
-          className="flex max-h-[calc(100vh-22rem)] min-h-[18rem] flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-5"
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4"
         >
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
@@ -527,7 +528,7 @@ export function ChatTrainer({
           <p className="mx-4 mb-2 text-xs text-[#8b5050] sm:mx-5">{error}</p>
         )}
 
-        <div className="border-t border-white/50 px-4 py-3 sm:px-5">
+        <div className="shrink-0 border-t border-white/50 px-3 py-3 sm:px-5">
           <div className="flex gap-2">
             <input
               type="text"
@@ -538,13 +539,13 @@ export function ChatTrainer({
                 atMessageLimit ? 'Лимит сообщений достигнут' : 'Напишите ответ...'
               }
               disabled={isLoading || atMessageLimit}
-              className="min-w-0 flex-1 rounded-2xl border border-white/70 bg-white/70 px-4 py-2.5 text-sm text-[#5c4033] outline-none placeholder:text-[#c4a090] focus:border-[#ffc9b5] disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-2xl border border-white/70 bg-white/70 px-3 py-2.5 text-base text-[#5c4033] outline-none placeholder:text-[#c4a090] focus:border-[#ffc9b5] disabled:opacity-60 sm:px-4 sm:text-sm"
             />
             <button
               type="button"
               onClick={handleSend}
               disabled={!input.trim() || isLoading || atMessageLimit || !hasKey}
-              className="shrink-0 cursor-pointer rounded-2xl bg-gradient-to-r from-[#ffe08a] via-[#ffc9b5] to-[#ffb8c9] px-4 py-2.5 text-sm font-bold text-[#6b4540] shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              className="shrink-0 cursor-pointer rounded-2xl bg-gradient-to-r from-[#ffe08a] via-[#ffc9b5] to-[#ffb8c9] px-3 py-2.5 text-xs font-bold text-[#6b4540] shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:text-sm"
             >
               Отправить
             </button>

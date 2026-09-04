@@ -274,23 +274,23 @@ export function TrainingModule({
   const primaryDisabled = showChoices && !canProceedFromChoice
 
   return (
-    <div className="relative mx-auto flex min-h-screen w-full max-w-xl flex-col items-center px-4 pb-16">
+    <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center px-3 pb-16 sm:px-4">
       {!showEndScreen && (
         <button
           type="button"
           onClick={onBackToMenu}
-          className="fixed left-4 top-4 z-30 cursor-pointer rounded-full border border-white/60 bg-white/75 px-3.5 py-1.5 text-sm font-semibold text-[#7a5248] shadow-sm backdrop-blur-sm transition hover:bg-white/90 sm:left-6 sm:top-6"
+          className="fixed left-3 top-[max(0.75rem,env(safe-area-inset-top))] z-30 cursor-pointer rounded-full border border-white/60 bg-white/75 px-3.5 py-1.5 text-sm font-semibold text-[#7a5248] shadow-sm backdrop-blur-sm transition hover:bg-white/90 sm:left-6 sm:top-6"
         >
           ← В меню
         </button>
       )}
 
-      <div className="fixed left-1/2 top-[30%] z-20 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 px-3 sm:px-4">
+      <div className="fixed left-1/2 top-[22%] z-20 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 px-3 sm:top-[28%] sm:px-4 md:top-[30%]">
         <motion.h1
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: 'easeOut' }}
-          className="min-h-[2.5rem] text-center text-2xl font-bold leading-tight text-[#5c4033] sm:min-h-[3rem] sm:text-3xl"
+          className="min-h-[2.25rem] text-center text-xl font-bold leading-tight text-[#5c4033] sm:min-h-[3rem] sm:text-3xl"
         >
           {config.title}
           {config.id === 'nvc' && (
@@ -299,7 +299,7 @@ export function TrainingModule({
         </motion.h1>
 
         {!showEndScreen && (
-          <div className="mt-4 min-h-[4.5rem]">
+          <div className="mt-3 min-h-[3.5rem] sm:mt-4 sm:min-h-[4.5rem]">
             <ProgressBar stepIndex={stepIndex} steps={steps} theme={theme} />
             <p
               className="mt-3 min-h-[1.25rem] text-center text-xs font-bold uppercase tracking-wide"
@@ -314,8 +314,8 @@ export function TrainingModule({
       <div
         className={`flex w-full max-w-lg flex-col items-center justify-center ${
           showEndScreen
-            ? 'min-h-[calc(70vh-2rem)] pt-[calc(30vh+2.5rem)]'
-            : 'min-h-[calc(70vh-4rem)] pt-[calc(30vh+6rem)]'
+            ? 'min-h-[calc(68dvh-2rem)] pt-[calc(22dvh+2rem)] sm:min-h-[calc(70vh-2rem)] sm:pt-[calc(28vh+2.5rem)] md:pt-[calc(30vh+2.5rem)]'
+            : 'min-h-[calc(68dvh-4rem)] pt-[calc(22dvh+4.5rem)] sm:min-h-[calc(70vh-4rem)] sm:pt-[calc(28vh+5.5rem)] md:pt-[calc(30vh+6rem)]'
         }`}
       >
         <motion.div
@@ -458,7 +458,7 @@ export function TrainingModule({
                           key={option.id}
                           type="button"
                           onClick={() => handleOptionSelect(option.id)}
-                          className={`w-full rounded-2xl border-2 px-4 py-2.5 text-left text-sm leading-relaxed text-[#6b4540] transition-all active:scale-[0.99] ${borderClass}`}
+                          className={`w-full break-words rounded-2xl border-2 px-4 py-2.5 text-left text-sm leading-relaxed text-[#6b4540] transition-all active:scale-[0.99] ${borderClass}`}
                         >
                           {option.text}
                         </button>

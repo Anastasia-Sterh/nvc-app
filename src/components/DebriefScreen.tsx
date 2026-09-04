@@ -27,7 +27,7 @@ export function DebriefScreen({
   const overallScore = summary?.overall_score ?? session.debrief.score
 
   return (
-    <div className="flex min-h-screen w-full justify-center px-4 py-10">
+    <div className="flex min-h-dvh w-full justify-center overflow-y-auto px-4 py-6 pb-[max(2rem,env(safe-area-inset-bottom))] sm:py-10">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -86,7 +86,7 @@ export function DebriefScreen({
                   <p className="text-xs font-bold text-[#a07068]">
                     Сообщение {ev.user_message_index}
                   </p>
-                  <blockquote className="mt-2 border-l-4 border-[#ffc9b5] pl-3 text-sm italic text-[#5c4033]">
+                  <blockquote className="mt-2 break-words border-l-4 border-[#ffc9b5] pl-3 text-sm italic text-[#5c4033]">
                     «{ev.user_message_text}»
                   </blockquote>
 

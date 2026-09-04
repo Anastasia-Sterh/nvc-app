@@ -1,6 +1,7 @@
 import {
   applyComprehensiveRules,
   buildChatApiMessages,
+  buildMeaninglessMessageResponse,
   dialogueToChatMessage,
   normalizeAiTurnResponse,
 } from './trainerSimulation'
@@ -8,6 +9,7 @@ import {
   buildProfanityHardStopResponse,
   containsProfanityOrAbuse,
 } from './profanityFilter'
+import { isMeaninglessUserMessage } from './messageQuality'
 import { chatCompletion, DEFAULT_MODEL, parseAiJsonResponse } from './openRouter'
 import type {
   AiTurnResponse,
@@ -30,6 +32,7 @@ export async function runSimulationTurn(
     endReason?: SimulationEndReason
     model?: string
     milestones?: NegotiationMilestones
+    previousEfficiency?: number
   },
 ): Promise<AiTurnResponse> {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
@@ -43,6 +46,20 @@ export async function runSimulationTurn(
       session,
       lastUserMessage.text,
       options.userMessageIndex,
+    )
+  }
+
+  if (
+    session.id === 'comprehensive' &&
+    lastUserMessage &&
+    !options.isFinishing &&
+    isMeaninglessUserMessage(lastUserMessage.text)
+  ) {
+    return buildMeaninglessMessageResponse(
+      lastUserMessage.text,
+      options.userMessageIndex,
+      options.previousEfficiency ?? 0,
+      options.milestones,
     )
   }
 
@@ -76,6 +93,8 @@ export async function runSimulationTurn(
       options.userMessageIndex,
       session.maxUserMessages,
       options.milestones,
+      options.previousEfficiency ?? 0,
+      lastUserMessage?.text ?? '',
     )
   }
 

@@ -18,7 +18,7 @@ export function TrainerBriefingScreen({
   const briefing = session.briefing!
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center px-4 py-8">
+    <div className="flex min-h-dvh w-full items-start justify-center overflow-y-auto px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:items-center sm:py-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -43,7 +43,7 @@ export function TrainerBriefingScreen({
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-[#c49080]">
-              {session.mentorLabel} · {session.topic}
+              <span className="line-clamp-2">{session.mentorLabel} · {session.topic}</span>
             </p>
             <h1 className="text-xl font-bold text-[#5c4033] sm:text-2xl">
               {session.title}

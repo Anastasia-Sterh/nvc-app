@@ -92,10 +92,10 @@ function App() {
   const chatAvatars = activeTrainerId ? avatarsByTrainer[activeTrainerId] : [MentorAvatar]
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden">
+    <div className="relative min-h-dvh overflow-x-hidden">
       <WatercolorBackground />
 
-      <div className="relative z-10 flex min-h-screen w-full justify-center">
+      <div className="relative z-10 flex min-h-dvh w-full justify-center">
         <AnimatePresence mode="wait">
           {screen === 'menu' && (
             <motion.div

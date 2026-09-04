@@ -1,26 +1,7 @@
-import { useCallback, useState } from 'react'
-import {
-  clearStoredApiKey,
-  getEnvApiKey,
-  getStoredApiKey,
-  saveApiKey,
-} from './useOpenRouterKey'
+import { getEnvApiKey } from './useOpenRouterKey'
 
+/** API key is injected at build time via VITE_OPENROUTER_API_KEY — not shown in UI. */
 export function useOpenRouterKey() {
-  const [storedKey, setStoredKey] = useState(getStoredApiKey)
-
-  const apiKey = storedKey || getEnvApiKey()
-  const hasKey = Boolean(apiKey)
-
-  const persistKey = useCallback((key: string) => {
-    saveApiKey(key)
-    setStoredKey(key.trim())
-  }, [])
-
-  const removeKey = useCallback(() => {
-    clearStoredApiKey()
-    setStoredKey('')
-  }, [])
-
-  return { apiKey, hasKey, persistKey, removeKey, envKeyPresent: Boolean(getEnvApiKey()) }
+  const apiKey = getEnvApiKey()
+  return { apiKey, hasKey: Boolean(apiKey) }
 }

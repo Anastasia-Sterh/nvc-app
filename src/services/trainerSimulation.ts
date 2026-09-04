@@ -1,6 +1,7 @@
 import type { ChatMessage, TrainerSessionConfig, DialogueTurn, NegotiationMilestones } from '../types/trainer'
 import type { AiTurnResponse } from '../types/trainer'
 import { EMPTY_MILESTONES } from '../types/trainer'
+import { isMeaninglessUserMessage, MEANINGLESS_FEEDBACK } from './messageQuality'
 
 const JSON_SCHEMA = `{
   "communication_efficiency": number (0-100),
@@ -145,6 +146,14 @@ communication_efficiency = среднее (murchik_nvo_score + arni_harvard_scor
 - Если пользователь в одном сообщении качественно совмещает 2–3 техники (эмпатия + границы + альтернатива) — добавь +10–20% к communication_efficiency за этот ход (сверх базового среднего).
 - Если за 1–2 сообщения закрыты сразу несколько этапов — щедро повышай efficiency, чтобы сильный диалог мог завершиться за 3–5 шагов, а не растягиваться на 10.
 - Не занижай темп искусственно: хорошие комбинированные ответы должны быстро поднимать шкалу.
+- НИКОГДА не повышай communication_efficiency, если ответ пустой, бессмысленный, off-topic или без содержания по сценарию.
+
+БЕССМЫСЛЕННЫЕ И ПУСТЫЕ ОТВЕТЫ:
+- Примеры: «asdf», «test», «...», одно слово «да»/«нет»/«хз», случайный набор букв, ответ не про переговоры с Сергеем.
+- murchik_nvo_score, arni_harvard_score, bjorn_dearman_score = 0–10 каждый.
+- communication_efficiency не выше, чем на прошлом шаге (оставь прежнюю или снизь).
+- milestones не отмечай true за такой ход.
+- Сергей в dialogue раздражён и просит конкретику по ситуации.
 
 А. Мурчик — ННО:
   +15–30: признание эмоций и тревоги Сергея; «Я-сообщения»; факты без оценок.
@@ -376,33 +385,104 @@ export function buildChatApiMessages(
   return apiMessages
 }
 
+export function buildMeaninglessMessageResponse(
+  userMessageText: string,
+  userMessageIndex: number,
+  previousEfficiency: number,
+  previousMilestones: NegotiationMilestones = EMPTY_MILESTONES,
+): AiTurnResponse {
+  return {
+    communication_efficiency: previousEfficiency,
+    is_auto_completed: false,
+    hint_from_mentor: {
+      mentor_name: getActiveMentorForHint(previousMilestones),
+      tip: 'Ответ должен быть по ситуации с Сергеем: признайте его эмоции, обозначьте границы команды или предложите альтернативу.',
+    },
+    milestones: { ...previousMilestones },
+    hint_on_demand: '',
+    dialogue: {
+      speaker: 'Сергей (начальник)',
+      text: 'Это не ответ по делу. У нас через два дня презентация — что конкретно вы предлагаете?',
+    },
+    single_message_evaluations: [
+      {
+        user_message_index: userMessageIndex,
+        user_message_text: userMessageText,
+        murchik_nvo_score: 5,
+        murchik_comment: MEANINGLESS_FEEDBACK,
+        arni_harvard_score: 5,
+        arni_comment: MEANINGLESS_FEEDBACK,
+        bjorn_dearman_score: 5,
+        bjorn_comment: MEANINGLESS_FEEDBACK,
+      },
+    ],
+    final_summary: null,
+  }
+}
+
 export function applyComprehensiveRules(
   response: AiTurnResponse,
   userMessageIndex: number,
   maxUserMessages?: number,
   previousMilestones: NegotiationMilestones = EMPTY_MILESTONES,
+  previousEfficiency = 0,
+  userMessageText = '',
 ): AiTurnResponse {
   const ev = response.single_message_evaluations[0]
   if (!ev) return response
 
-  let efficiency = Math.round(
-    (ev.murchik_nvo_score + ev.arni_harvard_score + ev.bjorn_dearman_score) / 3,
-  )
+  const meaningless = isMeaninglessUserMessage(userMessageText)
 
-  const mergedMilestones = mergeMilestones(previousMilestones, response.milestones)
+  let murchik = clamp(Number(ev.murchik_nvo_score), 0, 100)
+  let arni = clamp(Number(ev.arni_harvard_score), 0, 100)
+  let bjorn = clamp(Number(ev.bjorn_dearman_score), 0, 100)
 
-  const newlyCompleted = [
-    !previousMilestones.empathy_completed && mergedMilestones.empathy_completed,
-    !previousMilestones.boundaries_completed && mergedMilestones.boundaries_completed,
-    !previousMilestones.win_win_completed && mergedMilestones.win_win_completed,
-  ].filter(Boolean).length
+  if (meaningless) {
+    murchik = Math.min(murchik, 10)
+    arni = Math.min(arni, 10)
+    bjorn = Math.min(bjorn, 10)
+  }
 
-  if (newlyCompleted >= 2) {
-    efficiency = Math.min(100, efficiency + 15)
-  } else if (newlyCompleted === 1 && efficiency < response.communication_efficiency) {
-    efficiency = Math.max(efficiency, response.communication_efficiency)
-  } else if (response.communication_efficiency > efficiency) {
-    efficiency = response.communication_efficiency
+  let efficiency = Math.round((murchik + arni + bjorn) / 3)
+  const avgScore = efficiency
+
+  const mergedMilestones = meaningless
+    ? { ...previousMilestones }
+    : mergeMilestones(previousMilestones, response.milestones)
+
+  if (meaningless) {
+    efficiency = previousEfficiency
+  } else {
+    const newlyCompleted = [
+      !previousMilestones.empathy_completed && mergedMilestones.empathy_completed,
+      !previousMilestones.boundaries_completed && mergedMilestones.boundaries_completed,
+      !previousMilestones.win_win_completed && mergedMilestones.win_win_completed,
+    ].filter(Boolean).length
+
+    if (newlyCompleted >= 2 && avgScore >= 40) {
+      efficiency = Math.min(100, efficiency + 15)
+    } else if (newlyCompleted === 1 && avgScore >= 35) {
+      efficiency = Math.min(100, efficiency + 8)
+    }
+
+    if (efficiency > previousEfficiency) {
+      if (avgScore < 30) {
+        efficiency = previousEfficiency
+      } else {
+        const maxDelta = avgScore >= 60 ? 20 : avgScore >= 40 ? 10 : 5
+        efficiency = Math.min(efficiency, previousEfficiency + maxDelta)
+      }
+    }
+  }
+
+  const patchedEvaluation = {
+    ...ev,
+    murchik_nvo_score: murchik,
+    arni_harvard_score: arni,
+    bjorn_dearman_score: bjorn,
+    murchik_comment: meaningless ? MEANINGLESS_FEEDBACK : ev.murchik_comment,
+    arni_comment: meaningless ? MEANINGLESS_FEEDBACK : ev.arni_comment,
+    bjorn_comment: meaningless ? MEANINGLESS_FEEDBACK : ev.bjorn_comment,
   }
 
   const allMilestonesDone =
@@ -411,9 +491,9 @@ export function applyComprehensiveRules(
     mergedMilestones.win_win_completed
 
   const mentors = [
-    { name: 'Мурчик' as const, score: ev.murchik_nvo_score },
-    { name: 'Арни' as const, score: ev.arni_harvard_score },
-    { name: 'Бьерн' as const, score: ev.bjorn_dearman_score },
+    { name: 'Мурчик' as const, score: patchedEvaluation.murchik_nvo_score },
+    { name: 'Арни' as const, score: patchedEvaluation.arni_harvard_score },
+    { name: 'Бьерн' as const, score: patchedEvaluation.bjorn_dearman_score },
   ]
   const lowest = mentors.reduce((a, b) => (a.score <= b.score ? a : b))
 
@@ -444,6 +524,7 @@ export function applyComprehensiveRules(
     hint_on_demand: response.hint_on_demand ?? '',
     hint_from_mentor: hint,
     is_auto_completed: isAutoCompleted,
+    single_message_evaluations: [patchedEvaluation],
     dialogue: {
       speaker: 'Сергей (начальник)',
       text: response.dialogue.text,
