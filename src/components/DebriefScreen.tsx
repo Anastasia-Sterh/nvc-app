@@ -16,6 +16,13 @@ function ScoreBadge({ score }: { score: number }) {
   )
 }
 
+const MENTOR_NAME_PREFIX =
+  /^(?:Мурчик|Арни|Бьерн|Все наставники)\s*[:：]\s*/iu
+
+function stripMentorNamePrefix(text: string): string {
+  return text.replace(MENTOR_NAME_PREFIX, '').trim()
+}
+
 export function DebriefScreen({
   session,
   result,
@@ -24,7 +31,7 @@ export function DebriefScreen({
 }: DebriefScreenProps) {
   const summary = result?.finalSummary
   const evaluations = result?.messageEvaluations ?? []
-  const overallScore = summary?.overall_score ?? session.debrief.score
+  const overallScore = summary?.overall_score ?? result?.finalEfficiency ?? 0
 
   return (
     <div className="flex min-h-dvh w-full justify-center overflow-y-auto px-4 py-6 pb-[max(2rem,env(safe-area-inset-bottom))] sm:py-10">
@@ -52,19 +59,19 @@ export function DebriefScreen({
             <div className="rounded-2xl bg-[#fff9f2] px-4 py-3">
               <p className="text-xs font-bold uppercase tracking-wide text-[#c49080]">Мурчик · ННО</p>
               <p className="mt-1 text-sm leading-relaxed text-[#6b4540]">
-                {summary.murchik_final_feedback}
+                {stripMentorNamePrefix(summary.murchik_final_feedback)}
               </p>
             </div>
             <div className="rounded-2xl bg-[#fff9f2] px-4 py-3">
               <p className="text-xs font-bold uppercase tracking-wide text-[#c49080]">Арни · Переговоры</p>
               <p className="mt-1 text-sm leading-relaxed text-[#6b4540]">
-                {summary.arni_final_feedback}
+                {stripMentorNamePrefix(summary.arni_final_feedback)}
               </p>
             </div>
             <div className="rounded-2xl bg-[#fff9f2] px-4 py-3">
               <p className="text-xs font-bold uppercase tracking-wide text-[#c49080]">Бьерн · DEAR MAN</p>
               <p className="mt-1 text-sm leading-relaxed text-[#6b4540]">
-                {summary.bjorn_final_feedback}
+                {stripMentorNamePrefix(summary.bjorn_final_feedback)}
               </p>
             </div>
           </div>

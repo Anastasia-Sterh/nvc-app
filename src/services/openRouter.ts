@@ -1,8 +1,4 @@
-export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
-
-/** Fast JSON + Russian roleplay; successor to discontinued gemini-2.0-flash-001 */
-export const DEFAULT_MODEL =
-  import.meta.env.VITE_OPENROUTER_MODEL ?? 'google/gemini-2.5-flash'
+export const CHAT_API_URL = '/api/chat/completions'
 
 export interface OpenRouterMessage {
   role: 'system' | 'user' | 'assistant'
@@ -21,11 +17,14 @@ export interface ChatCompletionResult {
 }
 
 interface RequestBody {
-  model: string
+  model?: string
   messages: OpenRouterMessage[]
-  temperature: number
-  max_tokens: number
-  response_format?: { type: 'json_object' }
+  maxTokens: number
+  jsonMode: boolean
+}
+
+interface ApiErrorPayload {
+  error?: { message?: string }
 }
 
 function isRetryableProviderError(message: string): boolean {
@@ -40,12 +39,16 @@ function isRetryableProviderError(message: string): boolean {
 
 function parseApiError(errorText: string, model: string): string {
   try {
-    const parsed = JSON.parse(errorText) as { error?: { message?: string } }
+    const parsed = JSON.parse(errorText) as ApiErrorPayload
     const apiMsg = parsed.error?.message
     if (apiMsg) {
-      return apiMsg.includes('No endpoints found')
-        ? `Модель «${model}» недоступна. Проверьте VITE_OPENROUTER_MODEL в .env`
-        : apiMsg
+      if (apiMsg.includes('No endpoints found')) {
+        return `Модель «${model}» недоступна. Проверьте OPENROUTER_MODEL на сервере.`
+      }
+      if (apiMsg.includes('Тренажёр временно недоступен')) {
+        return apiMsg
+      }
+      return apiMsg
     }
   } catch {
     // keep raw
@@ -60,24 +63,16 @@ export function formatCostUsd(cost: number): string {
   return `$${cost.toFixed(3)}`
 }
 
-async function requestCompletion(
-  apiKey: string,
-  body: RequestBody,
-): Promise<ChatCompletionResult> {
-  const response = await fetch(OPENROUTER_API_URL, {
+async function requestCompletion(body: RequestBody): Promise<ChatCompletionResult> {
+  const response = await fetch(CHAT_API_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
-      'X-Title': 'NVC Communication Trainer',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
 
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(parseApiError(errorText, body.model))
+    throw new Error(parseApiError(errorText, body.model ?? 'default'))
   }
 
   const data = (await response.json()) as {
@@ -94,29 +89,28 @@ async function requestCompletion(
   return {
     content,
     costUsd: data.usage?.cost ?? 0,
-    model: data.model ?? body.model,
+    model: data.model ?? body.model ?? 'unknown',
   }
 }
 
 export async function chatCompletion(
-  apiKey: string,
   messages: OpenRouterMessage[],
   options: ChatCompletionOptions = {},
 ): Promise<ChatCompletionResult> {
   const maxTokens = options.maxTokens ?? 1200
-  const model = options.model ?? DEFAULT_MODEL
-  const base = { messages, temperature: 0.5, max_tokens: maxTokens }
+  const model = options.model
+  const base = { messages, maxTokens, model }
 
   const attempts: RequestBody[] = [
-    { ...base, model, response_format: { type: 'json_object' } },
-    { ...base, model },
+    { ...base, jsonMode: true },
+    { ...base, jsonMode: false },
   ]
 
   let lastError: Error | null = null
 
   for (const body of attempts) {
     try {
-      return await requestCompletion(apiKey, body)
+      return await requestCompletion(body)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       lastError = error
@@ -143,7 +137,7 @@ export function parseAiJsonResponse(raw: string): unknown {
     return JSON.parse(jsonText)
   } catch {
     throw new Error(
-      'OpenRouter вернул ответ не в формате JSON. Проверьте модель и API-ключ.',
+      'OpenRouter вернул ответ не в формате JSON. Проверьте модель на сервере.',
     )
   }
 }

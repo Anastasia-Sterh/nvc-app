@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion'
 import { useEffect, useRef, useState, type ComponentType } from 'react'
-import { useOpenRouterKey } from '../hooks/useOpenRouterKeyState'
 import {
   buildSimulationResult,
   mergeEvaluations,
@@ -17,6 +16,7 @@ import {
   EFFICIENCY_AUTO_COMPLETE,
   EFFICIENCY_HINT_THRESHOLD,
   getActiveMentorForHint,
+  getDefaultHintOnDemand,
   MAX_ON_DEMAND_HINTS,
   mergeMilestones,
   MILESTONE_STEPS,
@@ -314,8 +314,8 @@ export function ChatTrainer({
   onFinish,
   onBackToMenu,
 }: ChatTrainerProps) {
-  const { apiKey, hasKey } = useOpenRouterKey()
   const savedSession = readChatSession(session.id)
+  const initialMilestones = savedSession?.milestones ?? EMPTY_MILESTONES
 
   const [messages, setMessages] = useState<ChatMessage[]>(
     () =>
@@ -332,10 +332,14 @@ export function ChatTrainer({
   const [evaluations, setEvaluations] = useState<SingleMessageEvaluation[]>(
     savedSession?.evaluations ?? [],
   )
-  const [milestones, setMilestones] = useState<NegotiationMilestones>(
-    savedSession?.milestones ?? EMPTY_MILESTONES,
+  const [milestones, setMilestones] = useState<NegotiationMilestones>(initialMilestones)
+  const [hintOnDemand, setHintOnDemand] = useState(
+    () =>
+      savedSession?.hintOnDemand ??
+      (session.id === 'comprehensive'
+        ? getDefaultHintOnDemand(initialMilestones)
+        : ''),
   )
-  const [hintOnDemand, setHintOnDemand] = useState(savedSession?.hintOnDemand ?? '')
   const [hintsRemaining, setHintsRemaining] = useState(
     savedSession?.hintsRemaining ?? MAX_ON_DEMAND_HINTS,
   )
@@ -448,20 +452,18 @@ export function ChatTrainer({
       let finalSummary = null
       let finalEfficiency = currentEfficiency
 
-      if (hasKey) {
-        const response = await runSimulationTurn(apiKey, session, currentMessages, {
-          userMessageIndex: currentMessages.filter((m) => m.role === 'user').length,
-          isFinishing: true,
-          endReason,
-          milestones: isComprehensive ? milestonesRef.current : undefined,
-          previousEfficiency: isComprehensive ? efficiencyRef.current : undefined,
-        })
-        finalSummary = response.final_summary
-        finalEfficiency = response.communication_efficiency || currentEfficiency
+      const response = await runSimulationTurn(session, currentMessages, {
+        userMessageIndex: currentMessages.filter((m) => m.role === 'user').length,
+        isFinishing: true,
+        endReason,
+        milestones: isComprehensive ? milestonesRef.current : undefined,
+        previousEfficiency: isComprehensive ? efficiencyRef.current : undefined,
+      })
+      finalSummary = response.final_summary
+      finalEfficiency = response.communication_efficiency ?? currentEfficiency
 
-        if (response.dialogue?.text?.trim()) {
-          setMessages((prev) => appendAssistantMessage(prev, response))
-        }
+      if (response.dialogue?.text?.trim()) {
+        setMessages((prev) => appendAssistantMessage(prev, response))
       }
 
       finishSimulation(
@@ -505,6 +507,8 @@ export function ChatTrainer({
       setMilestones(merged)
       if (response.hint_on_demand?.trim()) {
         setHintOnDemand(response.hint_on_demand.trim())
+      } else {
+        setHintOnDemand(getDefaultHintOnDemand(merged))
       }
     }
 
@@ -546,10 +550,6 @@ export function ChatTrainer({
   const handleSend = async () => {
     const text = input.trim()
     if (!text || isLoading || atMessageLimit) return
-    if (!hasKey) {
-      setError('Тренажёр временно недоступен. Попробуйте позже.')
-      return
-    }
 
     const userMsg = createUserMessage(text)
     const messagesWithUser = [...messagesRef.current, userMsg]
@@ -591,7 +591,7 @@ export function ChatTrainer({
     }
 
     try {
-      const response = await runSimulationTurn(apiKey, session, messagesWithUser, {
+      const response = await runSimulationTurn(session, messagesWithUser, {
         userMessageIndex: nextUserIndex,
         milestones: isComprehensive ? milestonesRef.current : undefined,
         previousEfficiency: isComprehensive ? efficiencyRef.current : undefined,
@@ -784,7 +784,7 @@ export function ChatTrainer({
         {/* Mobile Telegram-style composer (comprehensive) */}
         {isComprehensive && (
           <div
-            className="shrink-0 border-t border-white/50 bg-white/90 px-2 pt-2 backdrop-blur-md sm:hidden"
+            className="relative z-20 shrink-0 border-t border-white/50 bg-white/90 px-2 pt-2 backdrop-blur-md sm:hidden"
             style={{
               paddingBottom: `max(0.5rem, calc(env(safe-area-inset-bottom) + ${keyboardOffset}px))`,
             }}
@@ -816,7 +816,7 @@ export function ChatTrainer({
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={!input.trim() || isLoading || atMessageLimit || !hasKey}
+                disabled={!input.trim() || isLoading || atMessageLimit}
                 className="mb-0.5 flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-[#ffe08a] via-[#ffc9b5] to-[#ffb8c9] text-lg font-bold text-[#6b4540] shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Отправить"
               >
@@ -855,7 +855,7 @@ export function ChatTrainer({
             <button
               type="button"
               onClick={handleSend}
-              disabled={!input.trim() || isLoading || atMessageLimit || !hasKey}
+              disabled={!input.trim() || isLoading || atMessageLimit}
               className="shrink-0 cursor-pointer rounded-2xl bg-gradient-to-r from-[#ffe08a] via-[#ffc9b5] to-[#ffb8c9] px-3 py-2.5 text-xs font-bold text-[#6b4540] shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:text-sm"
             >
               Отправить

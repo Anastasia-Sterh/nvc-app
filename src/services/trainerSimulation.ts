@@ -113,6 +113,19 @@ export function getActiveMentorForHint(milestones: NegotiationMilestones): strin
   return 'Наставники'
 }
 
+export function getDefaultHintOnDemand(milestones: NegotiationMilestones): string {
+  if (!milestones.empathy_completed) {
+    return 'Признайте эмоции Сергея — покажите, что вы слышите его тревогу за сроки и контракт.'
+  }
+  if (!milestones.boundaries_completed) {
+    return 'Обозначьте границы команды: назовите факты по загрузке и откажитесь от ночных переработок.'
+  }
+  if (!milestones.win_win_completed) {
+    return 'Предложите реалистичную альтернативу для презентации — что можно показать инвесторам в срок.'
+  }
+  return 'Продолжайте удерживать спокойный тон и опираться на факты.'
+}
+
 export function countRemainingMilestones(milestones: NegotiationMilestones): number {
   return [
     milestones.empathy_completed,

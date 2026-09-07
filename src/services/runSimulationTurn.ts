@@ -10,7 +10,7 @@ import {
   containsProfanityOrAbuse,
 } from './profanityFilter'
 import { isMeaninglessUserMessage } from './messageQuality'
-import { chatCompletion, DEFAULT_MODEL, parseAiJsonResponse } from './openRouter'
+import { chatCompletion, parseAiJsonResponse } from './openRouter'
 import type {
   AiTurnResponse,
   ChatMessage,
@@ -23,7 +23,6 @@ import type {
 } from '../types/trainer'
 
 export async function runSimulationTurn(
-  apiKey: string,
   session: TrainerSessionConfig,
   messages: ChatMessage[],
   options: {
@@ -75,8 +74,7 @@ export async function runSimulationTurn(
           : 'пользователь завершил тренировку',
   })
 
-  const completion = await chatCompletion(apiKey, apiMessages, {
-    model: options.model ?? DEFAULT_MODEL,
+  const completion = await chatCompletion(apiMessages, {
     maxTokens: options.isFinishing
       ? 1800
       : session.id === 'comprehensive'
@@ -164,10 +162,10 @@ export function buildSimulationResult(
   messages: ChatMessage[] = [],
 ): SimulationResult {
   const fallbackSummary: FinalSummary = {
-    overall_score: finalEfficiency || session.debrief.score,
+    overall_score: finalEfficiency,
     murchik_final_feedback: session.debrief.tips[0] ?? session.debrief.summary,
     arni_final_feedback: session.debrief.tips[1] ?? session.debrief.summary,
-    bjorn_final_feedback: session.debrief.tips[2] ?? session.debrief.mentorQuote,
+    bjorn_final_feedback: session.debrief.tips[2] ?? session.debrief.summary,
   }
 
   return {
