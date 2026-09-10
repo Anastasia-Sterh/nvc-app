@@ -5,7 +5,7 @@ import {
   mergeEvaluations,
   runSimulationTurn,
 } from '../services/runSimulationTurn'
-import { formatCostUsd } from '../services/openRouter'
+import { formatCostUsd, isProviderSafetyError } from '../services/openRouter'
 import {
   buildProfanityHardStopResponse,
   containsProfanityOrAbuse,
@@ -14,7 +14,6 @@ import {
   buildMeaninglessMessageResponse,
   dialogueToChatMessage,
   EFFICIENCY_AUTO_COMPLETE,
-  EFFICIENCY_HINT_THRESHOLD,
   getActiveMentorForHint,
   getDefaultHintOnDemand,
   MAX_ON_DEMAND_HINTS,
@@ -53,13 +52,13 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className={`max-w-[85%] ${isUser ? 'ml-auto' : ''}`}
+          className={`max-w-[85%] sm:max-w-[72%] ${isUser ? 'ml-auto' : ''}`}
     >
       {!isUser && message.senderName && (
         <p className="mb-1 text-xs font-semibold text-[#a07068]">{message.senderName}</p>
       )}
       <div
-        className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
+        className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm sm:text-[15px] ${
           isUser
             ? 'rounded-2xl rounded-tr-sm bg-gradient-to-br from-[#ffe08a] to-[#ffc9b5] text-[#5c4033]'
             : 'rounded-2xl rounded-tl-sm bg-gradient-to-br from-[#fff9f2] to-[#ffe8d6] text-[#6b4540]'
@@ -226,27 +225,31 @@ function MilestonesPanel({ milestones }: { milestones: NegotiationMilestones }) 
   }
 
   return (
-    <div className="mt-3 space-y-1.5">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-[#c49080]">
+    <div className="mt-3">
+      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#c49080]">
         Этапы переговоров
       </p>
-      {MILESTONE_STEPS.map((step) => {
-        const done = doneByKey[step.key]
-        return (
-          <div
-            key={step.key}
-            className={`flex items-start gap-2 rounded-xl px-2.5 py-1.5 text-[11px] leading-snug ${
-              done ? 'bg-[#f0faf0]/90 text-[#4a6b45]' : 'bg-white/50 text-[#8b635a]'
-            }`}
-          >
-            <span className="mt-0.5 shrink-0 font-mono text-xs">{done ? '☑' : '☐'}</span>
-            <span>
-              <span className="font-semibold">{step.label}.</span>{' '}
-              <span className="break-words">{step.description}</span>
-            </span>
-          </div>
-        )
-      })}
+      <div className="grid grid-cols-3 gap-2">
+        {MILESTONE_STEPS.map((step) => {
+          const done = doneByKey[step.key]
+          const shortLabel = step.label.replace(/^Этап \d+: /, '')
+          return (
+            <div
+              key={step.key}
+              className={`rounded-xl px-2.5 py-2 text-[11px] leading-snug ${
+                done ? 'bg-[#f0faf0]/90 text-[#4a6b45]' : 'bg-white/50 text-[#8b635a]'
+              }`}
+            >
+              <span className="font-semibold">
+                {done ? '☑' : '☐'} {shortLabel}
+              </span>
+              <span className="mt-0.5 block break-words text-[10px] opacity-80">
+                {step.description}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -326,9 +329,6 @@ export function ChatTrainer({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [efficiency, setEfficiency] = useState(savedSession?.efficiency ?? 0)
-  const [mentorHint, setMentorHint] = useState<AiTurnResponse['hint_from_mentor'] | null>(
-    savedSession?.mentorHint ?? null,
-  )
   const [evaluations, setEvaluations] = useState<SingleMessageEvaluation[]>(
     savedSession?.evaluations ?? [],
   )
@@ -381,14 +381,14 @@ export function ChatTrainer({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, isLoading, mentorHint])
+  }, [messages, isLoading])
 
   useEffect(() => {
     writeChatSession({
       trainerId: session.id,
       messages,
       efficiency,
-      mentorHint,
+      mentorHint: null,
       evaluations,
       milestones,
       hintOnDemand,
@@ -399,7 +399,6 @@ export function ChatTrainer({
     session.id,
     messages,
     efficiency,
-    mentorHint,
     evaluations,
     milestones,
     hintOnDemand,
@@ -425,15 +424,59 @@ export function ChatTrainer({
     }
   }, [])
 
-  const applyMentorHint = (response: AiTurnResponse) => {
-    if (
-      response.communication_efficiency < EFFICIENCY_HINT_THRESHOLD &&
-      response.hint_from_mentor.tip
-    ) {
-      setMentorHint(response.hint_from_mentor)
-    } else {
-      setMentorHint(null)
+  const applyScoring = (
+    response: AiTurnResponse,
+    updatedEvaluations: SingleMessageEvaluation[],
+    alreadyShownDialogue: boolean,
+  ): { messagesAfterTurn: ChatMessage[]; autoHandled: boolean } => {
+    setEfficiency(response.communication_efficiency)
+
+    if (isComprehensive) {
+      const merged = mergeMilestones(milestonesRef.current, response.milestones)
+      milestonesRef.current = merged
+      setMilestones(merged)
+      if (response.hint_on_demand?.trim()) {
+        setHintOnDemand(response.hint_on_demand.trim())
+      } else {
+        setHintOnDemand(getDefaultHintOnDemand(merged))
+      }
     }
+
+    let messagesAfterTurn = messagesRef.current
+    if (!alreadyShownDialogue) {
+      setMessages((prev) => {
+        messagesAfterTurn = appendAssistantMessage(prev, response)
+        messagesRef.current = messagesAfterTurn
+        return messagesAfterTurn
+      })
+    }
+
+    const shouldAutoComplete =
+      response.is_auto_completed ||
+      response.communication_efficiency >= EFFICIENCY_AUTO_COMPLETE
+
+    if (shouldAutoComplete && response.final_summary) {
+      setTimeout(() => {
+        finishSimulation(
+          buildSimulationResult(
+            'auto',
+            response.communication_efficiency,
+            updatedEvaluations,
+            response.final_summary,
+            session,
+            messagesAfterTurn,
+          ),
+        )
+      }, 1200)
+      return { messagesAfterTurn, autoHandled: true }
+    }
+
+    if (shouldAutoComplete) {
+      void completeSimulation('auto', response.communication_efficiency, updatedEvaluations)
+      return { messagesAfterTurn, autoHandled: true }
+    }
+
+    return { messagesAfterTurn, autoHandled: false }
   }
 
   const completeSimulation = async (
@@ -461,6 +504,7 @@ export function ChatTrainer({
       })
       finalSummary = response.final_summary
       finalEfficiency = response.communication_efficiency ?? currentEfficiency
+      setEfficiency(finalEfficiency)
 
       if (response.dialogue?.text?.trim()) {
         setMessages((prev) => appendAssistantMessage(prev, response))
@@ -494,59 +538,6 @@ export function ChatTrainer({
     }
   }
 
-  const processAiResponse = (
-    response: AiTurnResponse,
-    updatedEvaluations: SingleMessageEvaluation[],
-  ): { messagesAfterTurn: ChatMessage[]; autoHandled: boolean } => {
-    setEfficiency(response.communication_efficiency)
-    applyMentorHint(response)
-
-    if (isComprehensive) {
-      const merged = mergeMilestones(milestonesRef.current, response.milestones)
-      milestonesRef.current = merged
-      setMilestones(merged)
-      if (response.hint_on_demand?.trim()) {
-        setHintOnDemand(response.hint_on_demand.trim())
-      } else {
-        setHintOnDemand(getDefaultHintOnDemand(merged))
-      }
-    }
-
-    let messagesAfterTurn = messagesRef.current
-    setMessages((prev) => {
-      messagesAfterTurn = appendAssistantMessage(prev, response)
-      messagesRef.current = messagesAfterTurn
-      return messagesAfterTurn
-    })
-
-    const shouldAutoComplete =
-      response.is_auto_completed ||
-      response.communication_efficiency >= EFFICIENCY_AUTO_COMPLETE
-
-    if (shouldAutoComplete && response.final_summary) {
-      setTimeout(() => {
-        finishSimulation(
-          buildSimulationResult(
-            'auto',
-            response.communication_efficiency,
-            updatedEvaluations,
-            response.final_summary,
-            session,
-            messagesAfterTurn,
-          ),
-        )
-      }, 1200)
-      return { messagesAfterTurn, autoHandled: true }
-    }
-
-    if (shouldAutoComplete) {
-      void completeSimulation('auto', response.communication_efficiency, updatedEvaluations)
-      return { messagesAfterTurn, autoHandled: true }
-    }
-
-    return { messagesAfterTurn, autoHandled: false }
-  }
-
   const handleSend = async () => {
     const text = input.trim()
     if (!text || isLoading || atMessageLimit) return
@@ -560,15 +551,17 @@ export function ChatTrainer({
     setInput('')
     setIsLoading(true)
     setError(null)
-    setMentorHint(null)
 
-    const applyTurnResponse = (response: AiTurnResponse) => {
+    const applyTurnResponse = (
+      response: AiTurnResponse,
+      alreadyShownDialogue = false,
+    ) => {
       const updatedEvaluations = mergeEvaluations(
         evaluations,
         response.single_message_evaluations,
       )
       setEvaluations(updatedEvaluations)
-      processAiResponse(response, updatedEvaluations)
+      applyScoring(response, updatedEvaluations, alreadyShownDialogue)
     }
 
     if (containsProfanityOrAbuse(text)) {
@@ -590,14 +583,56 @@ export function ChatTrainer({
       return
     }
 
-    try {
-      const response = await runSimulationTurn(session, messagesWithUser, {
-        userMessageIndex: nextUserIndex,
-        milestones: isComprehensive ? milestonesRef.current : undefined,
-        previousEfficiency: isComprehensive ? efficiencyRef.current : undefined,
-      })
+    let dialogueShown = false
 
-      applyTurnResponse(response)
+    try {
+      let response: AiTurnResponse
+
+      if (isComprehensive) {
+        try {
+          const dialogueResponse = await runSimulationTurn(session, messagesWithUser, {
+            userMessageIndex: nextUserIndex,
+            milestones: milestonesRef.current,
+            previousEfficiency: efficiencyRef.current,
+            phase: 'dialogue',
+          })
+
+          if (dialogueResponse.dialogue.text.trim() && dialogueResponse.dialogue.text !== '...') {
+            setMessages((prev) => {
+              const next = appendAssistantMessage(prev, dialogueResponse)
+              messagesRef.current = next
+              return next
+            })
+            dialogueShown = true
+          }
+
+          response = await runSimulationTurn(session, messagesWithUser, {
+            userMessageIndex: nextUserIndex,
+            milestones: milestonesRef.current,
+            previousEfficiency: efficiencyRef.current,
+            phase: 'full',
+          })
+          if (dialogueShown) {
+            response = {
+              ...response,
+              dialogue: dialogueResponse.dialogue,
+            }
+          }
+        } catch (dialogueErr) {
+          if (dialogueShown) throw dialogueErr
+          response = await runSimulationTurn(session, messagesWithUser, {
+            userMessageIndex: nextUserIndex,
+            milestones: milestonesRef.current,
+            previousEfficiency: efficiencyRef.current,
+          })
+        }
+      } else {
+        response = await runSimulationTurn(session, messagesWithUser, {
+          userMessageIndex: nextUserIndex,
+        })
+      }
+
+      applyTurnResponse(response, dialogueShown)
 
       const autoHandled =
         response.is_auto_completed ||
@@ -617,14 +652,17 @@ export function ChatTrainer({
         }, 800)
       }
     } catch (err) {
-      if (containsProfanityOrAbuse(text)) {
+      const errMessage = err instanceof Error ? err.message : ''
+      if (containsProfanityOrAbuse(text) || isProviderSafetyError(errMessage)) {
         applyTurnResponse(buildProfanityHardStopResponse(session, text, nextUserIndex))
         setError(null)
       } else {
-        setError(err instanceof Error ? err.message : 'Ошибка запроса к OpenRouter')
-        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id))
-        messagesRef.current = messagesRef.current.filter((m) => m.id !== userMsg.id)
-        setInput(text)
+        setError(errMessage || 'Ошибка запроса к Provod.ai')
+        if (!dialogueShown) {
+          setMessages((prev) => prev.filter((m) => m.id !== userMsg.id))
+          messagesRef.current = messagesRef.current.filter((m) => m.id !== userMsg.id)
+          setInput(text)
+        }
       }
     } finally {
       setIsLoading(false)
@@ -645,7 +683,7 @@ export function ChatTrainer({
     <div
       className={`flex h-dvh max-h-dvh w-full flex-col ${
         isComprehensive
-          ? 'max-w-none px-0 pt-[env(safe-area-inset-top)] pb-0 sm:max-w-xl sm:px-4 sm:pt-[max(0.75rem,env(safe-area-inset-top))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+          ? 'max-w-none px-0 pt-[env(safe-area-inset-top)] pb-0 sm:max-w-4xl sm:px-6 sm:pt-[max(0.75rem,env(safe-area-inset-top))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]'
           : 'max-w-xl px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4'
       }`}
     >
@@ -711,7 +749,7 @@ export function ChatTrainer({
             </header>
 
             {/* Desktop header */}
-            <div className="hidden shrink-0 border-b border-white/50 px-5 py-4 sm:block">
+            <div className="hidden shrink-0 border-b border-white/50 px-5 py-3 sm:block">
               <div className="flex items-center justify-between gap-3">
                 {maxMessages != null && (
                   <MessageCounterBadge current={userMessageCount} max={maxMessages} />
@@ -757,25 +795,10 @@ export function ChatTrainer({
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
-          {isLoading && (
+          {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
             <p className="text-xs font-medium text-[#c49080]">Собеседник печатает…</p>
           )}
         </div>
-
-        {mentorHint?.tip && efficiency < EFFICIENCY_HINT_THRESHOLD && (
-          <div
-            className={`mx-3 mb-2 rounded-2xl border border-[#a8d5a0]/50 bg-[#f0faf0]/90 px-3 py-2 sm:mx-5 sm:mb-3 sm:px-4 sm:py-3 ${
-              isComprehensive ? 'max-sm:mx-2 max-sm:rounded-xl max-sm:py-2' : ''
-            }`}
-          >
-            <p className="text-[11px] font-bold text-[#4a6b45] sm:text-xs">
-              Подсказка · {mentorHint.mentor_name ?? session.mentorLabel}
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed text-[#4a6b45] sm:mt-1 sm:text-sm">
-              {mentorHint.tip}
-            </p>
-          </div>
-        )}
 
         {error && (
           <p className="mx-3 mb-1 text-xs text-[#8b5050] sm:mx-5 sm:mb-2">{error}</p>
@@ -862,28 +885,40 @@ export function ChatTrainer({
             </button>
           </div>
           {isComprehensive && (
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={handleRequestHint}
+                disabled={
+                  isLoading ||
+                  hintsRemaining <= 0 ||
+                  !hintOnDemand.trim() ||
+                  atMessageLimit
+                }
+                className="flex-1 cursor-pointer rounded-full border border-[#a8d5a0]/60 bg-[#f0faf0]/80 py-2 text-sm font-semibold text-[#4a6b45] transition hover:bg-[#f0faf0] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                💡 Подсказка (осталось {hintsRemaining})
+              </button>
+              <button
+                type="button"
+                onClick={handleFinish}
+                disabled={isLoading}
+                className="flex-1 cursor-pointer rounded-full border border-white/70 bg-white/60 py-2 text-sm font-semibold text-[#7a5248] transition hover:bg-white/80 disabled:opacity-50"
+              >
+                Завершить тренировку
+              </button>
+            </div>
+          )}
+          {!isComprehensive && (
             <button
               type="button"
-              onClick={handleRequestHint}
-              disabled={
-                isLoading ||
-                hintsRemaining <= 0 ||
-                !hintOnDemand.trim() ||
-                atMessageLimit
-              }
-              className="mt-2 w-full cursor-pointer rounded-full border border-[#a8d5a0]/60 bg-[#f0faf0]/80 py-2 text-sm font-semibold text-[#4a6b45] transition hover:bg-[#f0faf0] disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={handleFinish}
+              disabled={isLoading}
+              className="mt-3 w-full cursor-pointer rounded-full border border-white/70 bg-white/60 py-2.5 text-sm font-semibold text-[#7a5248] transition hover:bg-white/80 disabled:opacity-50"
             >
-              💡 Подсказка (осталось {hintsRemaining})
+              Завершить тренировку
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleFinish}
-            disabled={isLoading}
-            className="mt-3 w-full cursor-pointer rounded-full border border-white/70 bg-white/60 py-2.5 text-sm font-semibold text-[#7a5248] transition hover:bg-white/80 disabled:opacity-50"
-          >
-            Завершить тренировку
-          </button>
         </div>
       </div>
 

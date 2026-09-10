@@ -7,22 +7,56 @@ dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 3001
-const OPENROUTER_API_KEY =
-  process.env.OPENROUTER_API_KEY?.trim() ||
-  process.env.VITE_OPENROUTER_API_KEY?.trim() ||
-  ''
-const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.5-flash'
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const PROVOD_API_KEY = process.env.PROVOD_API_KEY?.trim() ?? ''
+const PREFERRED_MODEL = process.env.PROVOD_MODEL ?? 'gemini-2.5-flash'
+const FALLBACK_MODEL = process.env.PROVOD_FALLBACK_MODEL ?? 'gemini-3.1-flash-lite'
+const PROVOD_API_URL = 'https://api.provod.ai/v1/chat/completions'
 
 const app = express()
 app.use(express.json({ limit: '512kb' }))
 
+function parseProvodPayload(text) {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+function providerError(payload, text) {
+  if (payload?.error && typeof payload.error === 'object') return payload.error
+  if (payload && (payload.code || payload.message)) return payload
+  return { message: text || 'Ошибка Provod.ai' }
+}
+
+async function callProvod(model, messages, maxTokens, jsonMode) {
+  const body = {
+    model,
+    messages,
+    temperature: 0.5,
+    max_tokens: maxTokens,
+    ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+  }
+
+  const response = await fetch(PROVOD_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${PROVOD_API_KEY}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const text = await response.text()
+  return { ok: response.ok, status: response.status, text, payload: parseProvodPayload(text) }
+}
+
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: Boolean(OPENROUTER_API_KEY) })
+  res.json({ ok: Boolean(PROVOD_API_KEY), provider: 'provod.ai' })
 })
 
 app.post('/api/chat/completions', async (req, res) => {
-  if (!OPENROUTER_API_KEY) {
+  if (!PROVOD_API_KEY) {
     res.status(503).json({
       error: { message: 'Тренажёр временно недоступен. Попробуйте позже.' },
     })
@@ -36,30 +70,45 @@ app.post('/api/chat/completions', async (req, res) => {
     return
   }
 
-  const body = {
-    model: typeof model === 'string' && model.trim() ? model.trim() : DEFAULT_MODEL,
-    messages,
-    temperature: 0.5,
-    max_tokens: typeof maxTokens === 'number' ? maxTokens : 1200,
-    ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-  }
+  const requested =
+    typeof model === 'string' && model.trim() ? model.trim() : PREFERRED_MODEL
+  const tokenLimit = typeof maxTokens === 'number' ? maxTokens : 1200
+  const useJson = Boolean(jsonMode)
 
   try {
-    const response = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        'HTTP-Referer': req.get('origin') || req.get('referer') || '',
-        'X-Title': 'NVC Communication Trainer',
-      },
-      body: JSON.stringify(body),
-    })
+    let result = await callProvod(requested, messages, tokenLimit, useJson)
+    let usedModel = requested
 
-    const text = await response.text()
-    res.status(response.status).type('json').send(text)
+    const firstError = providerError(result.payload, result.text)
+    if (
+      !result.ok &&
+      firstError.code === 'FIRST_TOP_UP_REQUIRED' &&
+      requested !== FALLBACK_MODEL
+    ) {
+      result = await callProvod(FALLBACK_MODEL, messages, tokenLimit, useJson)
+      usedModel = FALLBACK_MODEL
+    }
+
+    if (!result.ok) {
+      const err = providerError(result.payload, result.text)
+      const message =
+        err.code === 'FIRST_TOP_UP_REQUIRED'
+          ? 'Эта модель Provod недоступна до первого пополнения баланса. Сейчас используется бесплатный каталог — пополните баланс, чтобы открыть gemini-2.5-flash.'
+          : err.message || 'Ошибка Provod.ai'
+
+      res.status(result.status).json({ error: { message, code: err.code } })
+      return
+    }
+
+    if (result.payload && typeof result.payload === 'object') {
+      result.payload.model = result.payload.model || usedModel
+      res.status(result.status).json(result.payload)
+      return
+    }
+
+    res.status(result.status).type('json').send(result.text)
   } catch {
-    res.status(502).json({ error: { message: 'Ошибка связи с OpenRouter' } })
+    res.status(502).json({ error: { message: 'Ошибка связи с Provod.ai' } })
   }
 })
 

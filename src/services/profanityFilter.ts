@@ -120,6 +120,11 @@ const ANGER_PHRASES = [
   'иди нах',
   'идите нах',
   'отвали',
+  'убейся',
+  'убей себя',
+  'сдохни',
+  'подохни',
+  'иди умри',
 ]
 
 function normalize(text: string): string {

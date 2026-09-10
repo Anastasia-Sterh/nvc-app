@@ -32,6 +32,7 @@ export async function runSimulationTurn(
     model?: string
     milestones?: NegotiationMilestones
     previousEfficiency?: number
+    phase?: 'dialogue' | 'full'
   },
 ): Promise<AiTurnResponse> {
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
@@ -39,6 +40,7 @@ export async function runSimulationTurn(
   if (
     lastUserMessage &&
     !options.isFinishing &&
+    options.phase !== 'full' &&
     containsProfanityOrAbuse(lastUserMessage.text)
   ) {
     return buildProfanityHardStopResponse(
@@ -52,6 +54,7 @@ export async function runSimulationTurn(
     session.id === 'comprehensive' &&
     lastUserMessage &&
     !options.isFinishing &&
+    options.phase !== 'full' &&
     isMeaninglessUserMessage(lastUserMessage.text)
   ) {
     return buildMeaninglessMessageResponse(
@@ -66,6 +69,7 @@ export async function runSimulationTurn(
     userMessageIndex: options.userMessageIndex,
     isFinishing: options.isFinishing,
     milestones: options.milestones,
+    phase: options.phase,
     reason:
       options.endReason === 'max_messages'
         ? 'достигнут лимит сообщений'
@@ -75,17 +79,20 @@ export async function runSimulationTurn(
   })
 
   const completion = await chatCompletion(apiMessages, {
-    maxTokens: options.isFinishing
-      ? 1800
-      : session.id === 'comprehensive'
-        ? 1400
-        : 900,
+    maxTokens:
+      options.phase === 'dialogue'
+        ? 280
+        : options.isFinishing
+          ? 1800
+          : session.id === 'comprehensive'
+            ? 1400
+            : 900,
   })
 
   let parsed = normalizeAiTurnResponse(parseAiJsonResponse(completion.content))
   parsed.requestCostUsd = completion.costUsd
 
-  if (session.id === 'comprehensive') {
+  if (session.id === 'comprehensive' && options.phase !== 'dialogue') {
     parsed = applyComprehensiveRules(
       parsed,
       options.userMessageIndex,
@@ -171,7 +178,9 @@ export function buildSimulationResult(
   return {
     endReason,
     finalEfficiency,
-    finalSummary: finalSummary ?? fallbackSummary,
+    finalSummary: finalSummary
+      ? { ...finalSummary, overall_score: finalEfficiency }
+      : fallbackSummary,
     messageEvaluations: sanitizeMessageEvaluations(messages, evaluations),
   }
 }

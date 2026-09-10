@@ -1,6 +1,6 @@
 export const CHAT_API_URL = '/api/chat/completions'
 
-export interface OpenRouterMessage {
+export interface AiProviderMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
@@ -18,13 +18,15 @@ export interface ChatCompletionResult {
 
 interface RequestBody {
   model?: string
-  messages: OpenRouterMessage[]
+  messages: AiProviderMessage[]
   maxTokens: number
   jsonMode: boolean
 }
 
 interface ApiErrorPayload {
-  error?: { message?: string }
+  code?: string
+  message?: string
+  error?: { message?: string; code?: string }
 }
 
 function isRetryableProviderError(message: string): boolean {
@@ -37,23 +39,55 @@ function isRetryableProviderError(message: string): boolean {
   )
 }
 
+function isSafetyBlock(code?: string, message?: string): boolean {
+  const haystack = `${code ?? ''} ${message ?? ''}`.toLowerCase()
+  return (
+    haystack.includes('content_filter') ||
+    haystack.includes('content_policy') ||
+    haystack.includes('safety') ||
+    haystack.includes('moderation') ||
+    haystack.includes('blocked') ||
+    haystack.includes('harm')
+  )
+}
+
+export function isProviderSafetyError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('политик безопасности') ||
+    lower.includes('content_filter') ||
+    lower.includes('content_policy') ||
+    lower.includes('safety')
+  )
+}
+
 function parseApiError(errorText: string, model: string): string {
   try {
     const parsed = JSON.parse(errorText) as ApiErrorPayload
-    const apiMsg = parsed.error?.message
+    const code = parsed.error?.code ?? parsed.code
+    const apiMsg = parsed.error?.message ?? parsed.message
+    if (code === 'FIRST_TOP_UP_REQUIRED') {
+      return 'Эта модель Provod недоступна до пополнения баланса. Используется доступная модель из бесплатного каталога.'
+    }
+    if (isSafetyBlock(code, apiMsg) || isSafetyBlock(code, errorText)) {
+      return 'Провайдер отклонил сообщение из‑за политики безопасности. В тренажёре нельзя использовать угрозы и оскорбления.'
+    }
     if (apiMsg) {
       if (apiMsg.includes('No endpoints found')) {
-        return `Модель «${model}» недоступна. Проверьте OPENROUTER_MODEL на сервере.`
+        return `Модель «${model}» недоступна. Проверьте PROVOD_MODEL на сервере.`
       }
       if (apiMsg.includes('Тренажёр временно недоступен')) {
         return apiMsg
       }
-      return apiMsg
+      return apiMsg.trim() || 'Ошибка Provod.ai'
     }
   } catch {
     // keep raw
   }
-  return errorText
+  if (isSafetyBlock(undefined, errorText)) {
+    return 'Провайдер отклонил сообщение из‑за политики безопасности. В тренажёре нельзя использовать угрозы и оскорбления.'
+  }
+  return errorText.trim() || 'Ошибка Provod.ai'
 }
 
 export function formatCostUsd(cost: number): string {
@@ -63,8 +97,12 @@ export function formatCostUsd(cost: number): string {
   return `$${cost.toFixed(3)}`
 }
 
+function getChatApiUrl(): string {
+  return new URL(CHAT_API_URL, window.location.origin).href
+}
+
 async function requestCompletion(body: RequestBody): Promise<ChatCompletionResult> {
-  const response = await fetch(CHAT_API_URL, {
+  const response = await fetch(getChatApiUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -77,13 +115,27 @@ async function requestCompletion(body: RequestBody): Promise<ChatCompletionResul
 
   const data = (await response.json()) as {
     model?: string
-    choices?: Array<{ message?: { content?: string } }>
+    choices?: Array<{
+      finish_reason?: string
+      message?: { content?: string }
+    }>
     usage?: { cost?: number }
   }
 
-  const content = data.choices?.[0]?.message?.content
+  const choice = data.choices?.[0]
+  const content = choice?.message?.content
+  const finishReason = (choice?.finish_reason ?? '').toLowerCase()
+  if (
+    finishReason.includes('safety') ||
+    finishReason.includes('content_filter') ||
+    finishReason.includes('moderation')
+  ) {
+    throw new Error(
+      'Провайдер отклонил сообщение из‑за политики безопасности. В тренажёре нельзя использовать угрозы и оскорбления.',
+    )
+  }
   if (!content) {
-    throw new Error('OpenRouter вернул пустой ответ')
+    throw new Error('Provod.ai вернул пустой ответ')
   }
 
   return {
@@ -94,7 +146,7 @@ async function requestCompletion(body: RequestBody): Promise<ChatCompletionResul
 }
 
 export async function chatCompletion(
-  messages: OpenRouterMessage[],
+  messages: AiProviderMessage[],
   options: ChatCompletionOptions = {},
 ): Promise<ChatCompletionResult> {
   const maxTokens = options.maxTokens ?? 1200
@@ -120,7 +172,7 @@ export async function chatCompletion(
     }
   }
 
-  throw lastError ?? new Error('Не удалось получить ответ от OpenRouter')
+  throw lastError ?? new Error('Не удалось получить ответ от Provod.ai')
 }
 
 export function parseAiJsonResponse(raw: string): unknown {
@@ -137,7 +189,7 @@ export function parseAiJsonResponse(raw: string): unknown {
     return JSON.parse(jsonText)
   } catch {
     throw new Error(
-      'OpenRouter вернул ответ не в формате JSON. Проверьте модель на сервере.',
+      'Provod.ai вернул ответ не в формате JSON. Проверьте модель на сервере.',
     )
   }
 }

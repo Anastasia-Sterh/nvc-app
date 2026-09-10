@@ -5,7 +5,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
   senderName?: string
-  /** OpenRouter charge for this AI reply, in USD */
+  /** AI provider charge for this reply, in USD */
   costUsd?: number
 }
 

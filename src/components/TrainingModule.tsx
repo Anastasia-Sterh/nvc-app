@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useState, type ComponentType } from 'react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
 import type { GoalId } from '../data/learningGoals'
-import type { TrainingModuleConfig, TrainingTheme } from '../types/training'
+import type { TrainingModuleConfig, TrainingStep, TrainingTheme } from '../types/training'
 import {
   clearTrainingProgress,
   readTrainingProgress,
@@ -93,6 +93,10 @@ const feedbackExit = {
   transition: exitTransition,
 }
 
+function isIntroStep(step: TrainingStep, index: number): boolean {
+  return index === 0 && !step.question && !step.isFinale
+}
+
 function ProgressBar({
   stepIndex,
   steps,
@@ -102,17 +106,21 @@ function ProgressBar({
   steps: TrainingModuleConfig['steps']
   theme: TrainingTheme
 }) {
+  const progressSteps = steps.filter((step, index) => !isIntroStep(step, index))
+  const hasIntro = isIntroStep(steps[0], 0)
+  const progressIndex = hasIntro ? stepIndex - 1 : stepIndex
+
   return (
     <div className="w-full shrink-0" aria-label="Прогресс обучения">
       <div className="flex gap-1 px-0 sm:gap-1.5">
-        {steps.map((s, i) => (
+        {progressSteps.map((s, i) => (
           <div key={s.id} className="flex flex-1 flex-col items-center gap-1">
             <div
               className={`h-1.5 w-full rounded-full transition-colors duration-500 ${
-                i <= stepIndex ? '' : 'bg-white/60'
+                i <= progressIndex ? '' : 'bg-white/60'
               }`}
               style={
-                i <= stepIndex
+                i <= progressIndex
                   ? {
                       background: `linear-gradient(to right, ${theme.progressFrom}, ${theme.progressTo})`,
                     }
@@ -121,9 +129,9 @@ function ProgressBar({
             />
             <span
               className={`hidden h-8 w-full text-center text-[10px] font-semibold leading-tight sm:block ${
-                i === stepIndex ? 'text-[#7a5248]' : ''
+                i === progressIndex ? 'text-[#7a5248]' : ''
               }`}
-              style={i !== stepIndex ? { color: theme.stepLabel } : undefined}
+              style={i !== progressIndex ? { color: theme.stepLabel } : undefined}
             >
               {s.title}
             </span>
@@ -198,14 +206,22 @@ export function TrainingModule({
   const { steps, theme, complete } = config
 
   const savedProgress = readTrainingProgress(goalId)
-
-  const [stepIndex, setStepIndex] = useState(savedProgress?.stepIndex ?? 0)
-  const [messageIndex, setMessageIndex] = useState(savedProgress?.messageIndex ?? 0)
+  const lastStepIndex = Math.max(0, steps.length - 1)
+  const initialStepIndex = Math.min(savedProgress?.stepIndex ?? 0, lastStepIndex)
+  const initialStep = steps[initialStepIndex]
+  const [stepIndex, setStepIndex] = useState(initialStepIndex)
+  const [messageIndex, setMessageIndex] = useState(
+    Math.min(
+      savedProgress?.messageIndex ?? 0,
+      Math.max(0, initialStep.messages.length - 1),
+    ),
+  )
   const [showQuiz, setShowQuiz] = useState(savedProgress?.showQuiz ?? false)
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(
     savedProgress?.selectedOptionId ?? null,
   )
   const [isComplete, setIsComplete] = useState(savedProgress?.isComplete ?? false)
+  const leavingRef = useRef(false)
 
   const step = steps[stepIndex]
   const isFinaleStep = Boolean(step.isFinale)
@@ -255,6 +271,21 @@ export function TrainingModule({
     setSelectedOptionId(optionId)
   }
 
+  const leaveModule = (next: () => void) => {
+    leavingRef.current = true
+    clearTrainingProgress(goalId)
+    next()
+  }
+
+  const handleBackToMenu = () => {
+    leaveModule(onBackToMenu)
+  }
+
+  const handleStartComprehensive = () => {
+    if (!onStartComprehensive) return
+    leaveModule(onStartComprehensive)
+  }
+
   const restart = () => {
     clearTrainingProgress(goalId)
     setIsComplete(false)
@@ -267,6 +298,7 @@ export function TrainingModule({
   const showEndScreen = isComplete || isFinaleStep
 
   useEffect(() => {
+    if (leavingRef.current) return
     writeTrainingProgress(goalId, {
       stepIndex,
       messageIndex,
@@ -298,7 +330,7 @@ export function TrainingModule({
       {!showEndScreen && (
         <button
           type="button"
-          onClick={onBackToMenu}
+          onClick={handleBackToMenu}
           className="fixed left-3 top-[max(0.75rem,env(safe-area-inset-top))] z-30 cursor-pointer rounded-full border border-white/60 bg-white/75 px-3.5 py-1.5 text-sm font-semibold text-[#7a5248] shadow-sm backdrop-blur-sm transition hover:bg-white/90 sm:left-6 sm:top-6"
         >
           ← В меню
@@ -321,12 +353,14 @@ export function TrainingModule({
         {!showEndScreen && (
           <div className="mt-3 min-h-[3.5rem] sm:mt-4 sm:min-h-[4.5rem]">
             <ProgressBar stepIndex={stepIndex} steps={steps} theme={theme} />
-            <p
-              className="mt-3 min-h-[1.25rem] text-center text-xs font-bold uppercase tracking-wide"
-              style={{ color: theme.stepLabel }}
-            >
-              Шаг {step.id} · {step.title}
-            </p>
+            {!isIntroStep(step, stepIndex) && (
+              <p
+                className="mt-3 min-h-[1.25rem] text-center text-xs font-bold uppercase tracking-wide"
+                style={{ color: theme.stepLabel }}
+              >
+                Шаг {isIntroStep(steps[0], 0) ? stepIndex : step.id} · {step.title}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -354,10 +388,10 @@ export function TrainingModule({
                 {complete.message}
               </p>
               <FinaleActions
-                onStartComprehensive={onStartComprehensive}
+                onStartComprehensive={handleStartComprehensive}
                 showComprehensive={allModulesComplete}
                 onRestart={restart}
-                onBackToMenu={onBackToMenu}
+                onBackToMenu={handleBackToMenu}
               />
             </motion.div>
           ) : isFinaleStep ? (
@@ -387,10 +421,10 @@ export function TrainingModule({
                 </div>
               </div>
               <FinaleActions
-                onStartComprehensive={onStartComprehensive}
+                onStartComprehensive={handleStartComprehensive}
                 showComprehensive={allModulesComplete}
                 onRestart={restart}
-                onBackToMenu={onBackToMenu}
+                onBackToMenu={handleBackToMenu}
               />
             </motion.div>
           ) : (

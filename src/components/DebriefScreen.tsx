@@ -69,7 +69,7 @@ export function DebriefScreen({
               </p>
             </div>
             <div className="rounded-2xl bg-[#fff9f2] px-4 py-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-[#c49080]">Бьерн · DEAR MAN</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-[#c49080]">Бьерн · Границы</p>
               <p className="mt-1 text-sm leading-relaxed text-[#6b4540]">
                 {stripMentorNamePrefix(summary.bjorn_final_feedback)}
               </p>
@@ -116,7 +116,7 @@ export function DebriefScreen({
                     </div>
                     <div className="rounded-xl bg-[#fff9f2] p-3">
                       <p className="text-xs font-bold text-[#c49080]">
-                        DEAR MAN · {ev.bjorn_dearman_score}
+                        Границы · {ev.bjorn_dearman_score}
                       </p>
                       <p className="mt-1 text-xs leading-relaxed text-[#6b4540]">
                         {ev.bjorn_comment}

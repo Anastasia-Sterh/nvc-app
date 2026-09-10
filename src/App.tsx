@@ -18,6 +18,7 @@ import { useModuleProgress } from './hooks/useModuleProgress'
 import { useWelcomeSeen } from './hooks/useWelcomeSeen'
 import {
   clearChatSession,
+  clearTrainingProgress,
   getInitialNavigation,
   writeNavigation,
   writeMenuNavigation,
@@ -96,6 +97,9 @@ function App() {
   }
 
   const goToMenu = () => {
+    if (activeGoalId) {
+      clearTrainingProgress(activeGoalId)
+    }
     clearChatSession()
     writeMenuNavigation()
     setScreen('menu')
