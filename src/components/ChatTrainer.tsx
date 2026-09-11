@@ -12,10 +12,12 @@ import {
 } from '../services/profanityFilter'
 import {
   buildMeaninglessMessageResponse,
+  DISADVANTAGEOUS_AGREEMENT_HINT,
   dialogueToChatMessage,
   EFFICIENCY_AUTO_COMPLETE,
   getActiveMentorForHint,
   getDefaultHintOnDemand,
+  isDisadvantageousAgreement,
   MAX_ON_DEMAND_HINTS,
   mergeMilestones,
   MILESTONE_STEPS,
@@ -284,6 +286,39 @@ function HintModal({
   )
 }
 
+function DisadvantageousAgreementModal({ onRestart }: { onRestart: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-4 sm:items-center">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-md rounded-2xl border border-[#ffc9b5]/70 bg-[#fff9f2] p-5 shadow-xl sm:p-6"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="agreement-warning-title"
+      >
+        <p
+          id="agreement-warning-title"
+          className="text-center text-lg font-bold text-[#5c4033]"
+        >
+          Не соглашайтесь на невыгодные условия
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-[#6b4540]">
+          {DISADVANTAGEOUS_AGREEMENT_HINT}
+        </p>
+        <button
+          type="button"
+          onClick={onRestart}
+          autoFocus
+          className="mt-5 w-full cursor-pointer rounded-full bg-gradient-to-r from-[#ffe08a] via-[#ffc9b5] to-[#ffb8c9] py-3 text-sm font-bold text-[#6b4540] shadow-sm transition hover:brightness-105"
+        >
+          Ок
+        </button>
+      </motion.div>
+    </div>
+  )
+}
+
 function createUserMessage(text: string): ChatMessage {
   return {
     id: `user-${Date.now()}`,
@@ -344,6 +379,7 @@ export function ChatTrainer({
     savedSession?.hintsRemaining ?? MAX_ON_DEMAND_HINTS,
   )
   const [showHintModal, setShowHintModal] = useState(false)
+  const [showAgreementWarning, setShowAgreementWarning] = useState(false)
   const [showMobileMilestones, setShowMobileMilestones] = useState(false)
   const [showGoalModal, setShowGoalModal] = useState(
     () => session.id === 'comprehensive' && !savedSession?.goalModalSeen,
@@ -570,6 +606,12 @@ export function ChatTrainer({
       return
     }
 
+    if (isComprehensive && isDisadvantageousAgreement(text)) {
+      setShowAgreementWarning(true)
+      setIsLoading(false)
+      return
+    }
+
     if (isComprehensive && isMeaninglessUserMessage(text)) {
       applyTurnResponse(
         buildMeaninglessMessageResponse(
@@ -673,6 +715,30 @@ export function ChatTrainer({
     if (!hintOnDemand.trim() || hintsRemaining <= 0 || isLoading) return
     setHintsRemaining((n) => n - 1)
     setShowHintModal(true)
+  }
+
+  const restartAfterDisadvantageousAgreement = () => {
+    const initialMessages = session.initialMessages.filter((m) => m.role === 'assistant')
+    const resetMilestones = { ...EMPTY_MILESTONES }
+
+    clearChatSession()
+    finishingRef.current = false
+    messagesRef.current = initialMessages
+    milestonesRef.current = resetMilestones
+    efficiencyRef.current = 0
+
+    setMessages(initialMessages)
+    setInput('')
+    setIsLoading(false)
+    setError(null)
+    setEfficiency(0)
+    setEvaluations([])
+    setMilestones(resetMilestones)
+    setHintOnDemand(getDefaultHintOnDemand(resetMilestones))
+    setHintsRemaining(MAX_ON_DEMAND_HINTS)
+    setShowHintModal(false)
+    setShowMobileMilestones(false)
+    setShowAgreementWarning(false)
   }
 
   const handleFinish = () => {
@@ -927,6 +993,12 @@ export function ChatTrainer({
           mentor={getActiveMentorForHint(milestones)}
           hint={hintOnDemand}
           onClose={() => setShowHintModal(false)}
+        />
+      )}
+
+      {showAgreementWarning && (
+        <DisadvantageousAgreementModal
+          onRestart={restartAfterDisadvantageousAgreement}
         />
       )}
 
