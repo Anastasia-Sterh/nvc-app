@@ -288,9 +288,18 @@ function HintModal({
 }
 
 function DisadvantageousAgreementModal({ onRestart }: { onRestart: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const focusTimer = window.setTimeout(() => dialogRef.current?.focus(), 0)
+    return () => window.clearTimeout(focusTimer)
+  }, [])
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-4 sm:items-center">
       <motion.div
+        ref={dialogRef}
+        tabIndex={-1}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md rounded-2xl border border-[#ffc9b5]/70 bg-[#fff9f2] p-5 shadow-xl sm:p-6"
@@ -310,7 +319,6 @@ function DisadvantageousAgreementModal({ onRestart }: { onRestart: () => void })
         <button
           type="button"
           onClick={onRestart}
-          autoFocus
           className="mt-5 w-full cursor-pointer rounded-full bg-gradient-to-r from-[#ffe08a] via-[#ffc9b5] to-[#ffb8c9] py-3 text-sm font-bold text-[#6b4540] shadow-sm transition hover:brightness-105"
         >
           Ок
@@ -903,7 +911,12 @@ export function ChatTrainer({
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (!e.repeat) void handleSend()
+                  }
+                }}
                 placeholder={atMessageLimit ? 'Лимит сообщений' : 'Сообщение...'}
                 disabled={isLoading || atMessageLimit}
                 className="min-w-0 flex-1 rounded-3xl border border-white/70 bg-white/80 px-4 py-2.5 text-base text-[#5c4033] outline-none placeholder:text-[#c4a090] focus:border-[#ffc9b5] disabled:opacity-60"
@@ -940,7 +953,12 @@ export function ChatTrainer({
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  if (!e.repeat) void handleSend()
+                }
+              }}
               placeholder={
                 atMessageLimit ? 'Лимит сообщений достигнут' : 'Напишите ответ...'
               }
