@@ -5,6 +5,7 @@ import type {
   NegotiationMilestones,
   AiTurnResponse,
   FinalSummary,
+  UserStrategyClassification,
 } from '../types/trainer'
 import { EMPTY_MILESTONES } from '../types/trainer'
 import { isMeaninglessUserMessage, MEANINGLESS_FEEDBACK } from './messageQuality'
@@ -99,6 +100,7 @@ export const MILESTONE_STEPS = [
 ]
 
 export const MAX_ON_DEMAND_HINTS = 3
+export const SEMANTIC_CAPITULATION_CONFIDENCE = 0.75
 
 export const DISADVANTAGEOUS_AGREEMENT_HINT =
   'Вы согласились на невыгодные условия, не защитив интересы команды. Такая уступка закрепляет ночные переработки, повышает риск ошибок и всё равно не гарантирует качественный результат к презентации. Сначала признайте тревогу Сергея, затем обозначьте границы команды и предложите реалистичную альтернативу. Попробуйте снова.'
@@ -152,6 +154,19 @@ export function isDisadvantageousAgreement(text: string): boolean {
     DELIVERY_COMMITMENT_PATTERNS.some((pattern) => pattern.test(normalized))
 
   return explicitCapitulation || acceptsImposedDeadline
+}
+
+export function isSemanticCapitulation(response: AiTurnResponse): boolean {
+  const assessment = response.strategy_assessment
+  if (!assessment) return false
+
+  return (
+    assessment.classification === 'capitulation' &&
+    assessment.accepted_demands &&
+    !assessment.protected_team_boundaries &&
+    !assessment.offered_realistic_alternative &&
+    assessment.confidence >= SEMANTIC_CAPITULATION_CONFIDENCE
+  )
 }
 
 export function mergeMilestones(
@@ -464,17 +479,50 @@ export function buildDialogueSystemPrompt(session: TrainerSessionConfig): string
     ? `Сценарий: ${briefing.context}\nЦель пользователя: ${briefing.goal}`
     : `${session.title}. ${session.topic}`
 
-  return `Ты отыгрываешь ТОЛЬКО Сергея (начальника) в рабочем конфликте.
+  return `Ты одновременно:
+1. Классифицируешь СМЫСЛ последней реплики пользователя в контексте всей беседы.
+2. Отыгрываешь ТОЛЬКО Сергея (начальника) в рабочем конфликте.
+
 ${scenario}
 
 Сергей паникует из-за обещания заказчику и давит на команду. Он не психолог и не помогает формулировать ННО.
 Реплика: 1–3 коротких предложения на русском, без оценок и подсказок.
-Если пользователь просто соглашается на все требования, обещает весь объём или ночные переработки без границ и альтернативы, Сергей НЕ смягчается и НЕ благодарит. Он усиливает давление и требует гарантировать срок и результат.
-Обещание вида «в четверг помощник будет обучен, а дизайн будет готов/премиальным» считай полным принятием невыгодных условий. Не отвечай «Отлично», «договорились» или «это именно то, что нужно».
-Сергей движется к согласию только после того, как пользователь защищает интересы команды и предлагает реалистичное решение.
 
-Отвечай ТОЛЬКО JSON без markdown:
-{"dialogue":{"speaker":"Сергей (начальник)","text":"..."}}`
+КЛАССИФИКАЦИЯ СТРАТЕГИИ:
+- capitulation: пользователь по смыслу принимает навязанные объём/срок/переработки или обещает результат, не проверив реалистичность, не защитив команду и не предложив ограничение либо альтернативу.
+- constructive: пользователь защищает границы команды, ограничивает объём, предлагает MVP/демо/этапы/новый срок или ищет Win-Win.
+- neutral: пользователь уточняет требования, собирает факты, проявляет эмпатию или пока не принимает решение.
+- hostile: пользователь нападает, оскорбляет или ставит грубый ультиматум.
+
+Определяй намерение, а не ключевые слова. «Можете на меня рассчитывать», «не подведём», «берём в работу», обещание готового результата в четверг/пятницу и аналогичные фразы могут означать capitulation, даже без слов «да» и «согласен».
+Уточняющие вопросы о требованиях — neutral, а не capitulation.
+Ограниченное предложение вроде «к пятнице только MVP, остальное позже» — constructive, а не capitulation.
+
+accepted_demands=true, только если пользователь уже принял или пообещал выполнить требования; вопрос или обсуждение возможности не является принятием.
+protected_team_boundaries=true, только если пользователь обозначил ограничения нагрузки, сроков или отказ от переработок.
+offered_realistic_alternative=true, только если предложены сокращение объёма, MVP/демо, этапность, перенос срока или другой конкретный компромисс.
+confidence — уверенность классификации от 0 до 1.
+reason — одно короткое внутреннее пояснение на русском.
+
+ПОВЕДЕНИЕ СЕРГЕЯ:
+- При capitulation Сергей НЕ смягчается, НЕ благодарит и не говорит «Отлично», «договорились» или «это именно то, что нужно». Он усиливает давление и требует безусловной гарантии.
+- Сергей движется к согласию только после защиты интересов команды и реалистичной альтернативы.
+
+Отвечай ТОЛЬКО валидным JSON без markdown:
+{
+  "strategy_assessment": {
+    "classification": "capitulation" | "constructive" | "neutral" | "hostile",
+    "accepted_demands": boolean,
+    "protected_team_boundaries": boolean,
+    "offered_realistic_alternative": boolean,
+    "confidence": number,
+    "reason": string
+  },
+  "dialogue": {
+    "speaker": "Сергей (начальник)",
+    "text": string
+  }
+}`
 }
 
 export function buildChatApiMessages(
@@ -509,12 +557,6 @@ export function buildChatApiMessages(
     apiMessages.push({
       role: 'user',
       content: `[ЗАВЕРШЕНИЕ] ${options.reason ?? 'пользователь завершил тренировку'}. Верни JSON с final_summary, is_auto_completed=true и финальной репликой Сергея в dialogue.`,
-    })
-  } else if (options.phase === 'dialogue') {
-    apiMessages.push({
-      role: 'user',
-      content:
-        'Верни только следующую реплику Сергея в JSON-поле dialogue. Без оценок, этапов и final_summary.',
     })
   }
 
@@ -724,6 +766,22 @@ export function normalizeAiTurnResponse(raw: unknown): AiTurnResponse {
       speaker: data.dialogue?.speaker ?? 'Собеседник',
       text: data.dialogue?.text ?? '...',
     },
+    strategy_assessment: data.strategy_assessment
+      ? {
+          classification: normalizeStrategyClassification(
+            data.strategy_assessment.classification,
+          ),
+          accepted_demands: Boolean(data.strategy_assessment.accepted_demands),
+          protected_team_boundaries: Boolean(
+            data.strategy_assessment.protected_team_boundaries,
+          ),
+          offered_realistic_alternative: Boolean(
+            data.strategy_assessment.offered_realistic_alternative,
+          ),
+          confidence: clamp(Number(data.strategy_assessment.confidence ?? 0), 0, 1),
+          reason: String(data.strategy_assessment.reason ?? ''),
+        }
+      : undefined,
     single_message_evaluations: Array.isArray(data.single_message_evaluations)
       ? data.single_message_evaluations.map((ev, i) => ({
           user_message_index: Math.max(1, Number(ev.user_message_index ?? i + 1)),
@@ -745,6 +803,19 @@ export function normalizeAiTurnResponse(raw: unknown): AiTurnResponse {
         }
       : null,
   }
+}
+
+function normalizeStrategyClassification(
+  value: unknown,
+): UserStrategyClassification {
+  if (
+    value === 'capitulation' ||
+    value === 'constructive' ||
+    value === 'hostile'
+  ) {
+    return value
+  }
+  return 'neutral'
 }
 
 function clamp(n: number, min: number, max: number): number {

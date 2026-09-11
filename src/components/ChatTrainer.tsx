@@ -18,6 +18,7 @@ import {
   getActiveMentorForHint,
   getDefaultHintOnDemand,
   isDisadvantageousAgreement,
+  isSemanticCapitulation,
   MAX_ON_DEMAND_HINTS,
   mergeMilestones,
   MILESTONE_STEPS,
@@ -638,6 +639,11 @@ export function ChatTrainer({
             previousEfficiency: efficiencyRef.current,
             phase: 'dialogue',
           })
+
+          if (isSemanticCapitulation(dialogueResponse)) {
+            setShowAgreementWarning(true)
+            return
+          }
 
           if (dialogueResponse.dialogue.text.trim() && dialogueResponse.dialogue.text !== '...') {
             setMessages((prev) => {

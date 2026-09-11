@@ -42,6 +42,21 @@ export interface DialogueTurn {
   text: string
 }
 
+export type UserStrategyClassification =
+  | 'capitulation'
+  | 'constructive'
+  | 'neutral'
+  | 'hostile'
+
+export interface UserStrategyAssessment {
+  classification: UserStrategyClassification
+  accepted_demands: boolean
+  protected_team_boundaries: boolean
+  offered_realistic_alternative: boolean
+  confidence: number
+  reason: string
+}
+
 export interface SingleMessageEvaluation {
   user_message_index: number
   user_message_text: string
@@ -79,6 +94,7 @@ export interface AiTurnResponse {
   milestones?: NegotiationMilestones
   hint_on_demand?: string
   dialogue: DialogueTurn
+  strategy_assessment?: UserStrategyAssessment
   single_message_evaluations: SingleMessageEvaluation[]
   final_summary: FinalSummary | null
   requestCostUsd?: number
